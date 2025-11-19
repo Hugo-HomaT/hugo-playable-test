@@ -4,8 +4,7 @@ import { NavLink } from 'react-router-dom';
 export const Sidebar: React.FC = () => {
   const navItems = [
     { label: 'Projects', path: '/' },
-    { label: 'Concepts', path: '/concepts' },
-    { label: 'Settings', path: '/settings' },
+    { label: 'Media Library', path: '/media' },
   ];
 
   return (
@@ -22,7 +21,7 @@ export const Sidebar: React.FC = () => {
           Homa <span style={{ color: 'var(--color-accent)' }}>Playables</span>
         </h1>
       </div>
-      
+
       <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {navItems.map((item) => (
           <NavLink

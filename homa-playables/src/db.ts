@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Project } from './types';
+import type { Project, MediaItem, MediaFolder } from './types';
 
 interface HomaDB extends DBSchema {
     projects: {
@@ -17,10 +17,20 @@ interface HomaDB extends DBSchema {
         key: [string, string]; // [projectId, filePath]
         value: Blob;
     };
+    media: {
+        key: string;
+        value: MediaItem;
+        indexes: { 'by-folder': string };
+    };
+    folders: {
+        key: string;
+        value: MediaFolder;
+        indexes: { 'by-parent': string };
+    };
 }
 
 const DB_NAME = 'homa-playables-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<HomaDB>>;
 
@@ -36,6 +46,14 @@ function getDB() {
                 }
                 if (!db.objectStoreNames.contains('preview-files')) {
                     db.createObjectStore('preview-files'); // Key is array [projectId, filePath]
+                }
+                if (!db.objectStoreNames.contains('media')) {
+                    const mediaStore = db.createObjectStore('media', { keyPath: 'id' });
+                    mediaStore.createIndex('by-folder', 'folderId');
+                }
+                if (!db.objectStoreNames.contains('folders')) {
+                    const folderStore = db.createObjectStore('folders', { keyPath: 'id' });
+                    folderStore.createIndex('by-parent', 'parentId');
                 }
             },
         });
@@ -117,4 +135,43 @@ export async function clearPreviewFiles(projectId: string) {
         cursor = await cursor.continue();
     }
     await tx.done;
+}
+
+// Media Library Functions
+
+export async function saveMedia(media: MediaItem) {
+    const db = await getDB();
+    await db.put('media', media);
+}
+
+export async function getMediaInFolder(folderId: string | null): Promise<MediaItem[]> {
+    const db = await getDB();
+    return db.getAllFromIndex('media', 'by-folder', folderId);
+}
+
+export async function deleteMedia(id: string) {
+    const db = await getDB();
+    await db.delete('media', id);
+}
+
+export async function saveFolder(folder: MediaFolder) {
+    const db = await getDB();
+    await db.put('folders', folder);
+}
+
+export async function getSubfolders(parentId: string | null): Promise<MediaFolder[]> {
+    const db = await getDB();
+    return db.getAllFromIndex('folders', 'by-parent', parentId);
+}
+
+export async function deleteFolder(id: string) {
+    const db = await getDB();
+    // Note: This doesn't recursively delete children. 
+    // For a robust app, we'd want to delete all contents too.
+    await db.delete('folders', id);
+}
+
+export async function getAllFolders(): Promise<MediaFolder[]> {
+    const db = await getDB();
+    return db.getAll('folders');
 }

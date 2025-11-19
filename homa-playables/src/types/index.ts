@@ -32,3 +32,22 @@ export interface Concept {
     updatedAt: number;
     values: Record<string, any>; // Map variable name to value
 }
+
+export interface MediaFolder {
+    id: string;
+    name: string;
+    parentId: string | null;
+    createdAt: number;
+}
+
+export interface MediaItem {
+    id: string;
+    name: string;
+    type: 'image' | 'video' | 'audio';
+    blob: Blob;
+    folderId: string | null;
+    createdAt: number;
+    size: number;
+    dimensions?: { width: number; height: number };
+    duration?: number; // For audio/video
+}

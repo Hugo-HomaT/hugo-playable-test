@@ -3,6 +3,7 @@ import { DashboardLayout } from './layouts/DashboardLayout';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectHub } from './pages/ProjectHub';
 import { Editor } from './pages/Editor';
+import { MediaLibrary } from './pages/MediaLibrary';
 import './App.css';
 
 function App() {
@@ -13,7 +14,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="project/:id" element={<ProjectHub />} />
           <Route path="project/:id/concept/:conceptId" element={<Editor />} />
-          <Route path="settings" element={<div>Settings Page (Coming Soon)</div>} />
+          <Route path="media" element={<MediaLibrary />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
