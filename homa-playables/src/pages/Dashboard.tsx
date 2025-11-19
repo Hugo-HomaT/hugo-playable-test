@@ -48,7 +48,8 @@ export const Dashboard: React.FC = () => {
                 name: file.name.replace('.zip', ''),
                 lastModified: Date.now(),
                 buildUrl: '', // Will be generated in Editor
-                variables: config.variables
+                variables: config.variables,
+                concepts: []
             };
 
             // Save to IndexedDB
@@ -57,8 +58,8 @@ export const Dashboard: React.FC = () => {
             // Reload list
             await loadProjects();
 
-            // Navigate to editor
-            navigate(`/editor/${newProject.id}`);
+            // Navigate to project hub
+            navigate(`/project/${newProject.id}`);
         } catch (error) {
             console.error('Failed to parse project:', error);
             alert('Failed to load project. Please ensure it is a valid Homa Playable zip.');
@@ -282,7 +283,7 @@ export const Dashboard: React.FC = () => {
                             <div key={project.id} className="project-card-wrapper" style={{ position: 'relative', height: '280px' }}>
                                 <ProjectCard
                                     project={project}
-                                    onClick={() => navigate(`/editor/${project.id}`)}
+                                    onClick={() => navigate(`/project/${project.id}`)}
                                     onRename={handleRename}
                                 />
                                 <button

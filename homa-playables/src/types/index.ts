@@ -27,5 +27,8 @@ export interface Concept {
     id: string;
     projectId: string;
     name: string;
+    description?: string;
+    createdAt: number;
+    updatedAt: number;
     values: Record<string, any>; // Map variable name to value
 }

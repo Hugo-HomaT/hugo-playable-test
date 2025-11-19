@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Concept } from '../types';
+
 import { inlineAllAssets, validateFileSize, formatFileSize } from './AssetInliner';
 import { getMRAIDWrapper, getMintegralSDK } from './MRAIDWrapper';
 
@@ -7,12 +7,12 @@ export type ExportNetwork = 'mintegral' | 'applovin';
 
 export async function exportProject(
     originalZipBlob: Blob,
-    concept: Concept,
+    values: Record<string, any>,
     network: ExportNetwork,
     projectName: string = 'playable'
 ): Promise<Blob> {
     const zip = await JSZip.loadAsync(originalZipBlob);
-    const varsJson = JSON.stringify(concept.values);
+    const varsJson = JSON.stringify(values);
 
     if (network === 'mintegral') {
         return await exportMintegral(zip, varsJson, projectName);
