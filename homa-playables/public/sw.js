@@ -1,6 +1,6 @@
 const DB_NAME = 'homa-playables-db';
 const STORE_NAME = 'preview-files';
-const SW_VERSION = '1.2'; // Bump to ensure update
+const SW_VERSION = '1.4'; // Bump to ensure update
 
 self.addEventListener('install', (event) => {
     console.log(`[SW] Installing version ${SW_VERSION}`);
@@ -71,6 +71,41 @@ async function handlePreviewRequest(url) {
         // The files are decompressed upon upload in ZipUtils.ts.
         // We serve them as plain files, even if the URL ends in .gz.
         // This avoids browser issues with synthetic responses and Content-Encoding.
+
+        // INJECT CONFIG INTO HTML
+        if (filePath.endsWith('.html')) {
+            const configBlob = await getFile(db, projectId, 'homa_config.json');
+            if (configBlob) {
+                const configText = await configBlob.text();
+                let htmlText = await fileBlob.text();
+
+                // Parse to log variable count
+                try {
+                    const configObj = JSON.parse(configText);
+                    console.log(`[SW] Injecting HOMA_CONFIG with ${configObj.variables?.length || 0} variables`);
+                    console.log('[SW] Config variables:', configObj.variables?.map(v => `${v.name}=${v.value}`).join(', '));
+                } catch (e) {
+                    console.error('[SW] Failed to parse config for logging:', e);
+                }
+
+                // Inject config as global variable before any scripts
+                const configScript = `<script>
+                    window.HOMA_CONFIG = ${configText};
+                    console.log('[HOMA] Config injected:', window.HOMA_CONFIG);
+                    console.log('[HOMA] Variables:', window.HOMA_CONFIG.variables?.map(v => v.name + '=' + v.value).join(', '));
+                </script>`;
+                htmlText = htmlText.replace('<head>', '<head>' + configScript);
+
+                console.log('[SW] Injected HOMA_CONFIG into HTML');
+
+                return new Response(htmlText, {
+                    status: 200,
+                    headers: headers
+                });
+            } else {
+                console.warn('[SW] No homa_config.json found for project:', projectId);
+            }
+        }
 
         console.log(`[SW] Serving ${filePath} as ${contentType}`);
 
