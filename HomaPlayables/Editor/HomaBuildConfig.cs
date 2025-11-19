@@ -51,6 +51,7 @@ namespace HomaPlayables.Editor
         public class OptimizationConfig
         {
             public bool enableCodeStripping = true;
+            public bool enableRealtimeShadows = true; // Set to false to disable shadows for smaller builds
             public bool enableTextureOptimization = true;
             public bool enableAudioOptimization = true;
             public int maxTextureSize = 1024;
