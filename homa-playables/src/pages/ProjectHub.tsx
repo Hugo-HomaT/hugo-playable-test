@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProject, updateProject } from '../db';
 import type { Project, Concept } from '../types';
+import {
+    ArrowLeft,
+    Plus,
+    Copy,
+    Trash2,
+    Clock,
+    Edit3
+} from 'lucide-react';
 
 export const ProjectHub: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -94,6 +102,18 @@ export const ProjectHub: React.FC = () => {
         setIsCreating(true);
     };
 
+    const getModifiedCount = (concept: Concept) => {
+        if (!project) return 0;
+        let count = 0;
+        project.variables.forEach(v => {
+            // Check if the concept has a value for this variable AND it's different from the default
+            if (concept.values[v.name] !== undefined && String(concept.values[v.name]) !== String(v.value)) {
+                count++;
+            }
+        });
+        return count;
+    };
+
     if (loading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -127,7 +147,8 @@ export const ProjectHub: React.FC = () => {
                         gap: '8px'
                     }}
                 >
-                    ← Back to Dashboard
+                    <ArrowLeft size={16} />
+                    Back to Dashboard
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
                     {project.thumbnailUrl && (
@@ -144,6 +165,16 @@ export const ProjectHub: React.FC = () => {
                         />
                     )}
                     <div>
+                        <div style={{
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: 'var(--color-text-secondary)',
+                            marginBottom: '4px'
+                        }}>
+                            Project Hub
+                        </div>
                         <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>{project.name}</h1>
                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>
                             Last modified: {new Date(project.lastModified).toLocaleDateString()}
@@ -175,10 +206,14 @@ export const ProjectHub: React.FC = () => {
                             padding: '8px 16px',
                             borderRadius: 'var(--radius-sm)',
                             cursor: 'pointer',
-                            fontWeight: 500
+                            fontWeight: 500,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
                         }}
                     >
-                        + New Concept
+                        <Plus size={16} />
+                        New Concept
                     </button>
                 </div>
 
@@ -260,75 +295,76 @@ export const ProjectHub: React.FC = () => {
                                         padding: '16px',
                                         display: 'flex',
                                         flexDirection: 'column',
-                                        gap: '12px'
+                                        gap: '12px',
+                                        transition: 'transform 0.2s, box-shadow 0.2s',
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => navigate(`/project/${project.id}/concept/${concept.id}`)}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                                        e.currentTarget.style.borderColor = 'var(--color-accent)';
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.transform = 'none';
+                                        e.currentTarget.style.boxShadow = 'none';
+                                        e.currentTarget.style.borderColor = 'var(--color-border)';
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                                        <h3 style={{ fontWeight: 600, fontSize: '16px' }}>{concept.name}</h3>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                        <h3 style={{ fontWeight: 600, fontSize: '16px', margin: 0 }}>{concept.name}</h3>
+                                        <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
                                             <button
-                                                onClick={() => startCreate(concept)}
+                                                onClick={(e) => { e.stopPropagation(); startCreate(concept); }}
                                                 title="Duplicate"
                                                 style={{
-                                                    background: 'none',
+                                                    background: 'transparent',
                                                     border: 'none',
                                                     cursor: 'pointer',
-                                                    fontSize: '16px',
-                                                    opacity: 0.6
+                                                    padding: '6px',
+                                                    color: 'var(--color-text-secondary)',
+                                                    borderRadius: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
                                                 }}
+                                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+                                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                                             >
-                                                📋
+                                                <Copy size={16} />
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteConcept(concept.id)}
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteConcept(concept.id); }}
                                                 title="Delete"
                                                 style={{
-                                                    background: 'none',
+                                                    background: 'transparent',
                                                     border: 'none',
                                                     cursor: 'pointer',
-                                                    fontSize: '16px',
+                                                    padding: '6px',
                                                     color: '#ef4444',
-                                                    opacity: 0.6
+                                                    borderRadius: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
                                                 }}
+                                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+                                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                                             >
-                                                🗑️
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                                        <div>Created: {new Date(concept.createdAt || Date.now()).toLocaleDateString()}</div>
-                                        <div>Updated: {new Date(concept.updatedAt || Date.now()).toLocaleDateString()}</div>
-                                        <div style={{ marginTop: '4px' }}>{Object.keys(concept.values).length} variables modified</div>
+                                    <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: 'auto' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                            <Clock size={14} />
+                                            {new Date(concept.updatedAt || Date.now()).toLocaleDateString()}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Edit3 size={14} />
+                                            {getModifiedCount(concept)} variables modified
+                                        </div>
                                     </div>
-
-                                    <button
-                                        onClick={() => navigate(`/project/${project.id}/concept/${concept.id}`)}
-                                        style={{
-                                            marginTop: 'auto',
-                                            width: '100%',
-                                            padding: '8px',
-                                            backgroundColor: 'var(--color-bg-tertiary)',
-                                            border: '1px solid var(--color-border)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            color: 'var(--color-text-primary)',
-                                            cursor: 'pointer',
-                                            fontWeight: 500,
-                                            transition: 'all 0.2s'
-                                        }}
-                                        onMouseEnter={e => {
-                                            e.currentTarget.style.backgroundColor = 'var(--color-accent)';
-                                            e.currentTarget.style.color = 'white';
-                                            e.currentTarget.style.borderColor = 'var(--color-accent)';
-                                        }}
-                                        onMouseLeave={e => {
-                                            e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)';
-                                            e.currentTarget.style.color = 'var(--color-text-primary)';
-                                            e.currentTarget.style.borderColor = 'var(--color-border)';
-                                        }}
-                                    >
-                                        Open Editor
-                                    </button>
                                 </div>
                             ))}
                         </div>
