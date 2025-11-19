@@ -1,0 +1,7 @@
+    - [x] Register Service Worker in `main.tsx`
+    - [x] Add Fullscreen Button
+        - [x] Migrate to Git (`C:\Users\hugod\Documents\GitHub\hugo-playable-test`)
+        - [ ] Dashboard Styling
+        - [ ] Interactive Elements
+    - [x] Refactor `Editor.tsx` to store unzipped files in IDB
+    - [x] Remove fragile regex rewriting from `ZipUtils.ts`
