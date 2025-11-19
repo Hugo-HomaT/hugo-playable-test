@@ -12,6 +12,11 @@ namespace HomaPlayables.Editor
     public class HomaBuildConfig
     {
         public string version = "1.0";
+        
+        // Output Configuration
+        public string outputDirectory = "Builds";
+        public string outputFilename = "HomaPlayable"; // Without extension
+
         public SceneConfig scenes = new SceneConfig();
         public ExclusionConfig exclusions = new ExclusionConfig();
         public OptimizationConfig optimization = new OptimizationConfig();
@@ -22,6 +27,16 @@ namespace HomaPlayables.Editor
         {
             public List<string> scenePaths = new List<string>();
             public int startupSceneIndex = 0;
+
+            public string[] GetEnabledScenes()
+            {
+                // If no scenes defined, fallback to EditorBuildSettings
+                if (scenePaths == null || scenePaths.Count == 0)
+                {
+                    return System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(System.Linq.Enumerable.Where(UnityEditor.EditorBuildSettings.scenes, s => s.enabled), s => s.path));
+                }
+                return scenePaths.ToArray();
+            }
         }
 
         [Serializable]

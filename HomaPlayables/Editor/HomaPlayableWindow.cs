@@ -120,6 +120,35 @@ namespace HomaPlayables.Editor
             {
                 SaveConfig();
             }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Output Configuration", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            
+            EditorGUILayout.BeginHorizontal();
+            _config.outputDirectory = EditorGUILayout.TextField("Output Directory", _config.outputDirectory);
+            if (GUILayout.Button("...", GUILayout.Width(30)))
+            {
+                string path = EditorUtility.OpenFolderPanel("Select Output Directory", _config.outputDirectory, "");
+                if (!string.IsNullOrEmpty(path))
+                {
+                    // Make relative if possible
+                    if (path.StartsWith(Application.dataPath))
+                    {
+                        path = FileUtil.GetProjectRelativePath(path);
+                    }
+                    _config.outputDirectory = path;
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            _config.outputFilename = EditorGUILayout.TextField("Output Filename", _config.outputFilename);
+            EditorGUILayout.HelpBox($"Build will be saved to: {_config.outputDirectory}/{_config.outputFilename}.zip", MessageType.None);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                SaveConfig();
+            }
         }
 
         private List<HomaBuildMenu.VariableConfig> _detectedVariables;

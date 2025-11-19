@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnityEditor.Build.Reporting;
 
 namespace HomaPlayables.Editor
 {
@@ -17,8 +18,14 @@ namespace HomaPlayables.Editor
 
         public static void BuildPlayable(HomaBuildConfig config)
         {
-            string buildFolder = Path.Combine(Application.dataPath, "../Builds/HomaPlayable");
-            string zipPath = Path.Combine(Application.dataPath, "../HomaPlayable.zip");
+            // 2. Prepare build folder
+            string buildFolder = Path.Combine(config.outputDirectory, config.outputFilename);
+            if (!Path.IsPathRooted(buildFolder))
+            {
+                buildFolder = Path.Combine(Application.dataPath, "..", buildFolder);
+            }
+            
+            string zipPath = buildFolder + ".zip";
 
             // 0. Detect and report SDKs
             Debug.Log("[Homa] ===== SDK Detection =====");
@@ -31,8 +38,6 @@ namespace HomaPlayables.Editor
                 {
                     if (!string.IsNullOrEmpty(pattern))
                     {
-                        // This is a simple implementation; a real one would need more complex pattern matching
-                        // For now, we assume these are handled by the build process or just logged
                         Debug.Log($"[Homa] Custom exclusion pattern: {pattern}");
                     }
                 }
@@ -45,90 +50,108 @@ namespace HomaPlayables.Editor
             }
             Debug.Log("[Homa] ============================\n");
 
-            // 1. Apply Optimization Settings
-            ApplyOptimizationSettings(config.optimization);
-
-            // 2. Scan for Variables and Events
-            var variables = ScanForVariables();
-            var events = HomaEventTracker.GetRegisteredEvents();
-            
-            // Create runtime config
-            var runtimeConfig = new HomaConfig 
-            { 
-                version = config.version, 
-                variables = variables,
-                events = events,
-                buildInfo = new BuildInfo
-                {
-                    unityVersion = Application.unityVersion,
-                    pluginVersion = config.metadata.pluginVersion,
-                    buildDate = System.DateTime.UtcNow.ToString("o"),
-                    compressionFormat = "Gzip" // WebGL always uses Gzip in this setup
-                },
-                excludedSDKs = config.exclusions.autoExcludeSDKs ? sdkResult.DetectedSDKs : new List<string>()
-            };
-            string json = JsonUtility.ToJson(runtimeConfig, true);
-
-            // 3. Build WebGL
-            if (Directory.Exists(buildFolder)) Directory.Delete(buildFolder, true);
-            
-            BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
-            buildPlayerOptions.scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
-            buildPlayerOptions.locationPathName = buildFolder;
-            buildPlayerOptions.target = BuildTarget.WebGL;
-            buildPlayerOptions.options = BuildOptions.None;
-
-            Debug.Log("[Homa] Starting optimized WebGL build...");
-            var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
-
-            if (report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            // Use SettingsRestorer to ensure project settings are reverted after build
+            using (new SettingsRestorer())
             {
-                // Log build statistics
-                float sizeMB = report.summary.totalSize / (1024f * 1024f);
-                Debug.Log($"[Homa] Build succeeded: {sizeMB:F2} MB ({report.summary.totalSize:N0} bytes)");
-                
-                // Update metadata
-                config.metadata.lastBuildDate = System.DateTime.Now.ToString();
-                config.metadata.lastBuildSize = (long)report.summary.totalSize;
-                config.metadata.compressionFormat = "Gzip";
-                config.metadata.unityVersion = Application.unityVersion;
-                
-                // Save config to persist metadata
-                string configPath = Path.Combine(Application.dataPath, "../HomaPlayableConfig.json");
-                config.Save(configPath);
+                // 1. Apply Optimization Settings
+                ApplyOptimizationSettings(config.optimization);
 
-                // 4. Write Config
-                File.WriteAllText(Path.Combine(buildFolder, "homa_config.json"), json);
+                // 2. Scan for Variables and Events
+                var variables = ScanForVariables();
+                var events = HomaEventTracker.GetRegisteredEvents();
+                
+                // Create runtime config
+                var runtimeConfig = new HomaConfig 
+                { 
+                    version = config.version, 
+                    variables = variables,
+                    events = events,
+                    buildInfo = new BuildInfo
+                    {
+                        unityVersion = Application.unityVersion,
+                        pluginVersion = config.metadata.pluginVersion,
+                        buildDate = System.DateTime.UtcNow.ToString("o"),
+                        compressionFormat = "Gzip" // WebGL always uses Gzip in this setup
+                    },
+                    excludedSDKs = config.exclusions.autoExcludeSDKs ? sdkResult.DetectedSDKs : new List<string>()
+                };
+                string json = JsonUtility.ToJson(runtimeConfig, true);
 
-                // 5. Zip
-                if (File.Exists(zipPath)) File.Delete(zipPath);
-                ZipFile.CreateFromDirectory(buildFolder, zipPath);
-                
-                // Check final ZIP size
-                FileInfo zipInfo = new FileInfo(zipPath);
-                float zipSizeMB = zipInfo.Length / (1024f * 1024f);
-                Debug.Log($"[Homa] Playable zipped: {zipSizeMB:F2} MB ({zipInfo.Length:N0} bytes)");
-                
-                // Warn if exceeding 5MB
-                if (zipSizeMB > 5f)
+                // 3. Build WebGL
+                // Ensure directory exists
+                if (Directory.Exists(buildFolder))
                 {
-                    Debug.LogWarning($"[Homa] WARNING: ZIP size ({zipSizeMB:F2} MB) exceeds 5MB limit for most ad networks!");
+                    Directory.Delete(buildFolder, true);
                 }
-                else if (zipSizeMB > 3f)
+                Directory.CreateDirectory(buildFolder);
+                
+                BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
+                buildPlayerOptions.scenes = config.scenes.GetEnabledScenes();
+                buildPlayerOptions.locationPathName = buildFolder;
+                buildPlayerOptions.target = BuildTarget.WebGL;
+                buildPlayerOptions.options = BuildOptions.None;
+
+                Debug.Log("[Homa] Starting optimized WebGL build...");
+                var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+
+                if (report.summary.result == BuildResult.Succeeded)
                 {
-                    Debug.LogWarning($"[Homa] ZIP size ({zipSizeMB:F2} MB) is above optimal 3MB target.");
+                    // Log build statistics
+                    float sizeMB = report.summary.totalSize / (1024f * 1024f);
+                    Debug.Log($"[Homa] Build succeeded: {sizeMB:F2} MB ({report.summary.totalSize:N0} bytes)");
+                    
+                    // Update metadata
+                    config.metadata.lastBuildDate = System.DateTime.Now.ToString();
+                    config.metadata.lastBuildSize = (long)report.summary.totalSize;
+                    config.metadata.compressionFormat = "Gzip";
+                    config.metadata.unityVersion = Application.unityVersion;
+                    
+                    // Save config to persist metadata
+                    // Since HomaBuildConfig is a plain class, we can't use SetDirty.
+                    // We should save it to the JSON file if we know the path, or rely on the Window to save it.
+                    // However, the Window might not be open.
+                    // Let's try to find the default config path or just skip saving if not critical.
+                    // Ideally, HomaPlayableWindow should handle the persistence.
+                    // For now, let's try to save to the default location if it exists.
+                    string configPath = Path.Combine(Application.dataPath, "../HomaPlayableConfig.json");
+                    if (File.Exists(configPath))
+                    {
+                        config.Save(configPath);
+                    }
+
+                    // 4. Write Config
+                    File.WriteAllText(Path.Combine(buildFolder, "homa_config.json"), json);
+
+                    // 5. Zip
+                    if (File.Exists(zipPath)) File.Delete(zipPath);
+                    System.IO.Compression.ZipFile.CreateFromDirectory(buildFolder, zipPath);
+                    
+                    // Check final ZIP size
+                    FileInfo zipInfo = new FileInfo(zipPath);
+                    float zipSizeMB = zipInfo.Length / (1024f * 1024f);
+                    Debug.Log($"[Homa] Playable zipped: {zipSizeMB:F2} MB ({zipInfo.Length:N0} bytes)");
+                    
+                    // Warn if exceeding 5MB
+                    if (zipSizeMB > 5f)
+                    {
+                        Debug.LogWarning($"[Homa] WARNING: ZIP size ({zipSizeMB:F2} MB) exceeds 5MB limit for most ad networks!");
+                    }
+                    else if (zipSizeMB > 3f)
+                    {
+                        Debug.LogWarning($"[Homa] ZIP size ({zipSizeMB:F2} MB) is above optimal 3MB target.");
+                    }
+                    else
+                    {
+                        Debug.Log($"[Homa] ✓ ZIP size is within optimal range!");
+                    }
+                    
+                    EditorUtility.RevealInFinder(zipPath);
                 }
                 else
                 {
-                    Debug.Log($"[Homa] ✓ ZIP size is within optimal range!");
+                    Debug.LogError("[Homa] Build failed");
                 }
-                
-                EditorUtility.RevealInFinder(zipPath);
-            }
-            else
-            {
-                Debug.LogError("[Homa] Build failed");
-            }
+            } 
         }
 
         private static void ApplyOptimizationSettings(HomaBuildConfig.OptimizationConfig optimization)
@@ -156,8 +179,6 @@ namespace HomaPlayables.Editor
             PlayerSettings.SplashScreen.showUnityLogo = false;
 
             // === Graphics Settings ===
-            // Note: Texture compression should be set per-texture in import settings
-            // But we can set defaults here
             PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new UnityEngine.Rendering.GraphicsDeviceType[] { 
                 UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3,
                 UnityEngine.Rendering.GraphicsDeviceType.OpenGLES2
@@ -208,7 +229,7 @@ namespace HomaPlayables.Editor
                             step = attr.Step,
                             options = attr.Options,
                             section = section,
-                            order = attr.Order // Add order to config
+                            order = attr.Order
                         });
                     }
                     
@@ -217,9 +238,6 @@ namespace HomaPlayables.Editor
                     if (assetAttr != null)
                     {
                          string section = !string.IsNullOrEmpty(assetAttr.Section) ? assetAttr.Section : currentSection;
-                         // For assets, we might want to handle them similarly or just list them
-                         // Currently VariableConfig is string-based value, might need adaptation for assets
-                         // For now, adding them as variables with type info
                          list.Add(new VariableConfig
                          {
                              name = assetAttr.Name ?? field.Name,
@@ -267,7 +285,7 @@ namespace HomaPlayables.Editor
             public float step;
             public string[] options;
             public string section;
-            public int order; // Added order field
+            public int order;
         }
     }
 }
