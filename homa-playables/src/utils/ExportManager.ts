@@ -1,79 +1,65 @@
 import JSZip from 'jszip';
 import type { Concept } from '../types';
+import { inlineAllAssets, validateFileSize, formatFileSize } from './AssetInliner';
+import { getMRAIDWrapper, getMintegralSDK } from './MRAIDWrapper';
 
 export type ExportNetwork = 'mintegral' | 'applovin';
 
 export async function exportProject(
     originalZipBlob: Blob,
     concept: Concept,
-    network: ExportNetwork
+    network: ExportNetwork,
+    projectName: string = 'playable'
 ): Promise<Blob> {
     const zip = await JSZip.loadAsync(originalZipBlob);
-
-    // 1. Prepare Variable Injection Script
     const varsJson = JSON.stringify(concept.values);
-    const injectionScript = `
-    <script>
-      window.HomaVars = ${varsJson};
-      // Override existing variables if they are global or in a known namespace
-      // For this prototype, we assume the game reads window.HomaVars
-    </script>
-  `;
 
-    // 2. Process based on network
     if (network === 'mintegral') {
-        return await exportMintegral(zip, injectionScript);
+        return await exportMintegral(zip, varsJson, projectName);
     } else if (network === 'applovin') {
-        return await exportAppLovin(zip, injectionScript);
+        return await exportAppLovin(zip, varsJson);
     }
 
     throw new Error('Unknown network');
 }
 
-async function exportMintegral(zip: JSZip, injectionScript: string): Promise<Blob> {
-    // Mintegral requires a single HTML file with everything inlined (usually).
-    // For this prototype, we will just inject the script into index.html and return it.
-    // In a real production tool, we would inline CSS, JS, and Images (base64).
-
+/**
+ * Mintegral Export
+ * Format: ZIP file with structure: name.zip > name/ > name.html
+ * Max size: 5MB
+ */
+async function exportMintegral(
+    zip: JSZip,
+    varsJson: string,
+    projectName: string
+): Promise<Blob> {
     const indexFile = zip.file('index.html');
     if (!indexFile) throw new Error('index.html not found');
 
     let html = await indexFile.async('string');
 
-    // Inject script before closing head or body
+    // Inject Mintegral SDK and variables
+    const sdkScript = getMintegralSDK(varsJson);
     if (html.includes('</head>')) {
-        html = html.replace('</head>', `${injectionScript}</head>`);
+        html = html.replace('</head>', `${sdkScript}</head>`);
     } else {
-        html = html + injectionScript;
+        html = sdkScript + html;
     }
 
-    return new Blob([html], { type: 'text/html' });
-}
+    // Create new ZIP with proper structure
+    const exportZip = new JSZip();
+    const folderName = projectName;
 
-async function exportAppLovin(zip: JSZip, injectionScript: string): Promise<Blob> {
-    // AppLovin accepts a zip file.
-    // We clone the zip, inject the script into index.html, and re-zip.
+    // Add modified HTML
+    exportZip.file(`${folderName}/${folderName}.html`, html);
 
-    const newZip = new JSZip();
-
-    // Copy all files
+    // Copy all other files to the folder
     const filePromises: Promise<void>[] = [];
-
     zip.forEach((relativePath, zipEntry) => {
-        if (!zipEntry.dir) {
+        if (!zipEntry.dir && relativePath !== 'index.html') {
             const promise = (async () => {
-                if (relativePath === 'index.html') {
-                    let html = await zipEntry.async('string');
-                    if (html.includes('</head>')) {
-                        html = html.replace('</head>', `${injectionScript}</head>`);
-                    } else {
-                        html = html + injectionScript;
-                    }
-                    newZip.file(relativePath, html);
-                } else {
-                    const content = await zipEntry.async('blob');
-                    newZip.file(relativePath, content);
-                }
+                const content = await zipEntry.async('blob');
+                exportZip.file(`${folderName}/${relativePath}`, content);
             })();
             filePromises.push(promise);
         }
@@ -81,5 +67,75 @@ async function exportAppLovin(zip: JSZip, injectionScript: string): Promise<Blob
 
     await Promise.all(filePromises);
 
-    return await newZip.generateAsync({ type: 'blob' });
+    // Generate ZIP
+    const resultBlob = await exportZip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 }
+    });
+
+    // Validate size
+    if (!validateFileSize(resultBlob.size)) {
+        throw new Error(
+            `Mintegral export exceeds 5MB limit. Current size: ${formatFileSize(resultBlob.size)}`
+        );
+    }
+
+    console.log(`[Mintegral] Export size: ${formatFileSize(resultBlob.size)}`);
+    return resultBlob;
+}
+
+/**
+ * AppLovin Export
+ * Format: Single HTML file with ALL assets Base64-encoded
+ * Max size: 5MB
+ * CRITICAL: Must include MRAID v2.0 integration
+ */
+async function exportAppLovin(
+    zip: JSZip,
+    varsJson: string
+): Promise<Blob> {
+    // Inline all assets into HTML
+    const { html: inlinedHtml, totalSize: initialSize } = await inlineAllAssets(zip);
+
+    console.log(`[AppLovin] Initial inlined size: ${formatFileSize(initialSize)}`);
+
+    // Inject MRAID wrapper and variables
+    const mraidScript = getMRAIDWrapper(varsJson);
+    let finalHtml = inlinedHtml;
+
+    if (finalHtml.includes('</head>')) {
+        finalHtml = finalHtml.replace('</head>', `${mraidScript}</head>`);
+    } else if (finalHtml.includes('<body>')) {
+        finalHtml = finalHtml.replace('<body>', `<body>${mraidScript}`);
+    } else {
+        finalHtml = mraidScript + finalHtml;
+    }
+
+    // Add meta tags for proper mobile rendering
+    const metaTags = `
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+`;
+
+    if (finalHtml.includes('</head>')) {
+        finalHtml = finalHtml.replace('</head>', `${metaTags}</head>`);
+    } else {
+        finalHtml = metaTags + finalHtml;
+    }
+
+    // Create final blob
+    const resultBlob = new Blob([finalHtml], { type: 'text/html' });
+
+    // Validate size
+    if (!validateFileSize(resultBlob.size)) {
+        throw new Error(
+            `AppLovin export exceeds 5MB limit. Current size: ${formatFileSize(resultBlob.size)}. ` +
+            `Try reducing image quality or removing unused assets.`
+        );
+    }
+
+    console.log(`[AppLovin] Final export size: ${formatFileSize(resultBlob.size)}`);
+    return resultBlob;
 }

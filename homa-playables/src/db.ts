@@ -81,6 +81,18 @@ export async function deleteProject(id: string) {
     ]);
 }
 
+export async function updateProject(id: string, updates: Partial<Project>): Promise<Project> {
+    const db = await getDB();
+    const project = await db.get('projects', id);
+    if (!project) throw new Error('Project not found');
+
+    // Only update lastModified if explicitly provided in updates
+    // This way renaming won't change the upload date
+    const updatedProject = { ...project, ...updates };
+    await db.put('projects', updatedProject);
+    return updatedProject;
+}
+
 export async function savePreviewFile(projectId: string, filePath: string, file: Blob) {
     const db = await getDB();
     await db.put('preview-files', file, [projectId, filePath]);

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjectCard } from '../components/ProjectCard';
 import { parseProjectZip } from '../utils/ZipUtils';
-import { saveProject, getAllProjects, deleteProject } from '../db';
+import { saveProject, getAllProjects, deleteProject, updateProject } from '../db';
 import type { Project } from '../types';
 
 export const Dashboard: React.FC = () => {
@@ -99,6 +99,11 @@ export const Dashboard: React.FC = () => {
             await deleteProject(id);
             await loadProjects();
         }
+    };
+
+    const handleRename = async (id: string, newName: string) => {
+        await updateProject(id, { name: newName });
+        await loadProjects();
     };
 
     return (
@@ -274,42 +279,55 @@ export const Dashboard: React.FC = () => {
                         gap: '24px'
                     }}>
                         {filteredProjects.map(project => (
-                            <div key={project.id} style={{ position: 'relative', height: '280px' }}>
+                            <div key={project.id} className="project-card-wrapper" style={{ position: 'relative', height: '280px' }}>
                                 <ProjectCard
                                     project={project}
                                     onClick={() => navigate(`/editor/${project.id}`)}
+                                    onRename={handleRename}
                                 />
                                 <button
                                     onClick={(e) => handleDelete(e, project.id)}
                                     style={{
                                         position: 'absolute',
-                                        top: '12px',
-                                        right: '12px',
+                                        top: '8px',
+                                        right: '8px',
                                         width: '28px',
                                         height: '28px',
                                         borderRadius: '50%',
-                                        background: 'rgba(0,0,0,0.6)',
+                                        background: 'rgba(15, 15, 25, 0.8)',
                                         color: 'white',
-                                        border: 'none',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         cursor: 'pointer',
                                         zIndex: 10,
                                         opacity: 0,
-                                        transition: 'opacity 0.2s',
-                                        backdropFilter: 'blur(4px)'
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        backdropFilter: 'blur(8px)',
+                                        padding: 0
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-danger)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.6)'}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                                        e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.4)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'rgba(15, 15, 25, 0.8)';
+                                        e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+                                        e.currentTarget.style.boxShadow = 'none';
+                                    }}
                                     className="delete-btn"
+                                    title="Delete project"
                                 >
-                                    ✕
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
                                 </button>
                                 <style>
                                     {`
-                                        div:hover > .delete-btn {
-                                            opacity: 1;
+                                        .project-card-wrapper:hover .delete-btn {
+                                            opacity: 1 !important;
                                         }
                                     `}
                                 </style>

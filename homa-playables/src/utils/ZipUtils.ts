@@ -31,35 +31,51 @@ export async function parseProjectZip(file: File): Promise<ParsedProject> {
     zip.forEach((relativePath, zipEntry) => {
         if (!zipEntry.dir) {
             const promise = (async () => {
-                const blob = await zipEntry.async('blob');
+                let blob = await zipEntry.async('blob');
 
-                // Determine mime type
+                // Determine mime type (check clean filename without compression extension)
+                const cleanPath = relativePath.replace(/\.(gz|br)$/, '');
                 let type = 'application/octet-stream';
-                if (relativePath.endsWith('.html')) type = 'text/html';
-                else if (relativePath.endsWith('.js') || relativePath.endsWith('.js.gz')) type = 'application/javascript';
-                else if (relativePath.endsWith('.css')) type = 'text/css';
-                else if (relativePath.endsWith('.png')) type = 'image/png';
-                else if (relativePath.endsWith('.jpg')) type = 'image/jpeg';
-                else if (relativePath.endsWith('.wasm') || relativePath.endsWith('.wasm.gz')) type = 'application/wasm';
-                else if (relativePath.endsWith('.json')) type = 'application/json';
+                if (cleanPath.endsWith('.html')) type = 'text/html';
+                else if (cleanPath.endsWith('.js')) type = 'application/javascript';
+                else if (cleanPath.endsWith('.css')) type = 'text/css';
+                else if (cleanPath.endsWith('.png')) type = 'image/png';
+                else if (cleanPath.endsWith('.jpg')) type = 'image/jpeg';
+                else if (cleanPath.endsWith('.wasm')) type = 'application/wasm';
+                else if (cleanPath.endsWith('.json')) type = 'application/json';
+                else if (cleanPath.endsWith('.data')) type = 'application/octet-stream';
 
-                // Handle Gzip Decompression
+                // Handle Gzip Decompression (.gz files)
                 if (relativePath.endsWith('.gz')) {
+                    console.log(`[ZipUtils] Decompressing gzip: ${relativePath}`);
                     try {
-                        // Decompress using native DecompressionStream
                         const ds = new DecompressionStream('gzip');
                         const decompressedStream = blob.stream().pipeThrough(ds);
-                        const decompressedBlob = await new Response(decompressedStream).blob();
-
-                        // Store with original name but decompressed content
-                        files[relativePath] = new Blob([decompressedBlob], { type });
+                        blob = await new Response(decompressedStream).blob();
                     } catch (e) {
-                        console.warn(`Failed to decompress ${relativePath}, storing as is.`, e);
-                        files[relativePath] = new Blob([blob], { type });
+                        console.warn(`[ZipUtils] Failed to decompress gzip ${relativePath}, storing as is.`, e);
                     }
-                } else {
-                    files[relativePath] = new Blob([blob], { type });
                 }
+
+                // Handle Brotli Decompression (.br files)
+                if (relativePath.endsWith('.br')) {
+                    console.log(`[ZipUtils] Decompressing brotli: ${relativePath}`);
+                    try {
+                        // Note: DecompressionStream with 'deflate-raw' is a workaround
+                        // Browser support for 'br' in DecompressionStream is limited
+                        // We'll try, but may need to serve compressed if it fails
+                        const ds = new DecompressionStream('deflate-raw');
+                        const decompressedStream = blob.stream().pipeThrough(ds);
+                        blob = await new Response(decompressedStream).blob();
+                    } catch (e) {
+                        console.warn(`[ZipUtils] Brotli decompression not supported or failed for ${relativePath}. Serving compressed.`, e);
+                        // If decompression fails, we'll serve the compressed file
+                        // The browser will handle it if Content-Encoding is set properly
+                    }
+                }
+
+                // Store with original name but decompressed content
+                files[relativePath] = new Blob([blob], { type });
 
                 if (relativePath.endsWith('index.html')) {
                     entryPoint = relativePath;
@@ -78,7 +94,6 @@ export async function parseProjectZip(file: File): Promise<ParsedProject> {
     }
 
     // INJECT CSS FIX: Force Unity to fill the window
-    // This overrides fixed resolution settings from the Unity template
     if (files[entryPoint]) {
         let indexHtml = await new Response(files[entryPoint]).text();
 
@@ -90,11 +105,9 @@ export async function parseProjectZip(file: File): Promise<ParsedProject> {
         </style>
         `;
 
-        // Inject before </head>
         if (indexHtml.includes('</head>')) {
             indexHtml = indexHtml.replace('</head>', `${styleFix}</head>`);
         } else {
-            // Fallback if no head tag
             indexHtml = styleFix + indexHtml;
         }
 
