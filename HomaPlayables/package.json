@@ -1,0 +1,13 @@
+{
+    "name": "com.homa.playables",
+    "version": "1.0.0",
+    "displayName": "Homa Playables Plugin",
+    "description": "A lightweight plugin for creating and managing playable ads in Unity.",
+    "unity": "2021.3",
+    "author": {
+        "name": "Homa Games",
+        "email": "support@homagames.com",
+        "url": "https://homagames.com"
+    },
+    "dependencies": {}
+}

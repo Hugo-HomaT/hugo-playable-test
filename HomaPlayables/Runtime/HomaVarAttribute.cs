@@ -7,16 +7,18 @@ namespace HomaPlayables
     public class HomaVarAttribute : PropertyAttribute
     {
         public string Name;
+        public string Section;
+        public int Order;
         public float Min;
         public float Max;
+        public float Step;
         public string[] Options;
 
-        public HomaVarAttribute(string name = null, float min = 0, float max = 0, string[] options = null)
+        public HomaVarAttribute(string name, int order = 0, string section = null)
         {
             Name = name;
-            Min = min;
-            Max = max;
-            Options = options;
+            Order = order;
+            Section = section;
         }
     }
 }
