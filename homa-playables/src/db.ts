@@ -47,6 +47,11 @@ export async function saveProject(project: Project, zipBlob: Blob) {
     const db = await getDB();
     const tx = db.transaction(['projects', 'projectFiles'], 'readwrite');
 
+    // Ensure concepts array exists
+    if (!project.concepts) {
+        project.concepts = [];
+    }
+
     await Promise.all([
         tx.objectStore('projects').put(project),
         tx.objectStore('projectFiles').put({ projectId: project.id, zipBlob }),

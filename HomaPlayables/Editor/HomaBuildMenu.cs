@@ -219,15 +219,59 @@ namespace HomaPlayables.Editor
                         // Use section from attribute if present, otherwise fallback to currentSection
                         string section = !string.IsNullOrEmpty(attr.Section) ? attr.Section : currentSection;
                         
+                        // Determine type and serialize value
+                        string typeName = "string";
+                        string valueStr = "";
+                        string[] options = attr.Options;
+                        
+                        if (field.FieldType == typeof(int)) 
+                        { 
+                            typeName = "int"; 
+                            valueStr = val.ToString(); 
+                        }
+                        else if (field.FieldType == typeof(float)) 
+                        { 
+                            typeName = "float"; 
+                            valueStr = ((float)val).ToString(System.Globalization.CultureInfo.InvariantCulture); 
+                        }
+                        else if (field.FieldType == typeof(bool)) 
+                        { 
+                            typeName = "bool"; 
+                            valueStr = val != null ? ((bool)val).ToString().ToLower() : "false"; 
+                        }
+                        else if (field.FieldType == typeof(Vector3)) 
+                        { 
+                            typeName = "vector3"; 
+                            valueStr = JsonUtility.ToJson((Vector3)val); 
+                        }
+                        else if (field.FieldType == typeof(Color)) 
+                        { 
+                            typeName = "color"; 
+                            valueStr = "#" + ColorUtility.ToHtmlStringRGBA((Color)val); 
+                        }
+                        else if (field.FieldType.IsEnum) 
+                        { 
+                            typeName = "enum"; 
+                            valueStr = val.ToString();
+                            if (options == null || options.Length == 0)
+                            {
+                                options = System.Enum.GetNames(field.FieldType);
+                            }
+                        }
+                        else
+                        {
+                            valueStr = val != null ? val.ToString() : "";
+                        }
+
                         list.Add(new VariableConfig
                         {
                             name = attr.Name ?? field.Name,
-                            type = field.FieldType.Name,
-                            value = val != null ? val.ToString() : "",
+                            type = typeName,
+                            value = valueStr,
                             min = attr.Min,
                             max = attr.Max,
                             step = attr.Step,
-                            options = attr.Options,
+                            options = options,
                             section = section,
                             order = attr.Order
                         });

@@ -54,6 +54,7 @@ export const Editor: React.FC = () => {
 
                     setProject({ ...dbProject, buildUrl });
                     setVariables(dbProject.variables);
+                    setConcepts(dbProject.concepts || []);
                 } else {
                     console.error('Project not found in DB');
                     navigate('/');
@@ -69,13 +70,106 @@ export const Editor: React.FC = () => {
         loadProject();
     }, [id, navigate]);
 
-    const handleVariableUpdate = (name: string, value: any) => {
-        setVariables(prev => prev.map(v =>
+    // Debounce reload to prevent flickering
+    const reloadTimeoutRef = useRef<number | null>(null);
+
+    const handleVariableUpdate = async (name: string, value: any) => {
+        if (!project) return;
+
+        // 1. Update local state immediately for UI responsiveness
+        const newVariables = variables.map(v =>
             v.name === name ? { ...v, value } : v
-        ));
+        );
+        setVariables(newVariables);
+
+        // 2. Update DB config and reload iframe (debounced)
+        if (reloadTimeoutRef.current) {
+            window.clearTimeout(reloadTimeoutRef.current);
+        }
+
+        reloadTimeoutRef.current = window.setTimeout(async () => {
+            try {
+                // Construct new config object
+                // We need to match the structure expected by the Unity build (HomaConfig)
+                // Since we don't have the full original config easily accessible here without parsing again,
+                // we can try to patch the existing one if we had it, or reconstruct it.
+                // Ideally, we should have stored the full config JSON or object.
+                // For now, let's assume we can just update the variables list in the original config.
+
+                // We need to read the original config file to preserve other fields (events, buildInfo etc)
+                // But we stored files as Blobs.
+                // Optimization: We can just overwrite the variables section if we parse the original config.
+                // However, reading Blob -> Text -> JSON -> Modify -> Text -> Blob is expensive every time.
+
+                // Alternative: The Service Worker intercepts requests to 'homa_config.json'.
+                // We can just overwrite that specific file in the 'preview-files' store.
+
+                // Let's get the current config first
+                // We don't have a direct handle to it here.
+                // Let's assume we can fetch it from the SW or DB.
+                // For prototype, let's just read it from DB if possible, or better yet, 
+                // we should have loaded the full config object in state.
+
+                // Let's try to read 'homa_config.json' from the DB
+                // We need to import getPreviewFile (need to add it to db.ts)
+                // For now, let's rely on the fact that we parsed the zip and have the variables.
+                // We can reconstruct a minimal valid config if necessary, OR better,
+                // let's just fetch the file from the preview URL since it's served by SW!
+
+                const configUrl = `/preview/${project.id}/homa_config.json`;
+                const response = await fetch(configUrl);
+                const config = await response.json();
+
+                // Update variables in config
+                // We need to map our UI variables back to the config format
+                // Note: Vector3 needs to be stringified if the Unity side expects a string, 
+                // OR if we changed the Unity side to expect JSON object, we pass object.
+                // The Unity plugin now exports Vector3 as JSON string? No, we changed it to export as JSON string in value field?
+                // Wait, in HomaBuildMenu.cs we did: valueStr = JsonUtility.ToJson((Vector3)val);
+                // So the value IS a string in the JSON.
+                // But in the Web App, we might have parsed it?
+                // In parseProjectZip, we just read the JSON.
+                // So 'value' in Variable[] is likely a string for Vector3.
+                // But in VariableInspector, we parse it to object for editing.
+                // So 'value' passed here from Inspector is an object for Vector3.
+                // We need to stringify it back if the config expects a string.
+
+                config.variables = newVariables.map(v => {
+                    let valToSave = v.value;
+                    if (v.type === 'vector3' && typeof v.value === 'object') {
+                        valToSave = JSON.stringify(v.value);
+                    }
+                    // Color is string, Bool is string/bool?
+                    // Unity side exports bool as string "true"/"false".
+                    // If we want to be safe, we should match that.
+                    if (v.type === 'bool' && typeof v.value === 'boolean') {
+                        valToSave = v.value.toString().toLowerCase();
+                    }
+
+                    return {
+                        ...v,
+                        value: valToSave
+                    };
+                });
+
+                // Save back to DB
+                const newConfigBlob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+                await savePreviewFile(project.id, 'homa_config.json', newConfigBlob);
+
+                // Reload iframe
+                const iframe = document.querySelector('iframe');
+                if (iframe && iframe.contentWindow) {
+                    console.log('Reloading preview...');
+                    iframe.contentWindow.location.reload();
+                }
+
+            } catch (err) {
+                console.error('Failed to update live config:', err);
+            }
+        }, 500); // 500ms debounce
     };
 
-    const handleSaveConcept = (name: string) => {
+    const handleSaveConcept = async (name: string) => {
         if (!project) return;
 
         const values = variables.reduce((acc, v) => ({ ...acc, [v.name]: v.value }), {});
@@ -87,7 +181,18 @@ export const Editor: React.FC = () => {
             values
         };
 
-        setConcepts(prev => [...prev, newConcept]);
+        const updatedConcepts = [...concepts, newConcept];
+        setConcepts(updatedConcepts);
+
+        // Persist to DB
+        try {
+            await updateProject(project.id, { concepts: updatedConcepts });
+            // Also update local project state to keep it in sync
+            setProject(prev => prev ? { ...prev, concepts: updatedConcepts } : null);
+        } catch (err) {
+            console.error('Failed to save concept:', err);
+            alert('Failed to save concept');
+        }
     };
 
     const handleLoadConcept = (concept: Concept) => {

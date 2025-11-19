@@ -5,9 +5,10 @@ export interface Project {
     lastModified: number;
     buildUrl: string; // URL to the uploaded build (blob or hosted)
     variables: Variable[];
+    concepts: Concept[]; // Persisted concepts
 }
 
-export type VariableType = 'int' | 'float' | 'bool' | 'enum' | 'string';
+export type VariableType = 'int' | 'float' | 'bool' | 'enum' | 'string' | 'vector3' | 'color';
 
 export interface Variable {
     name: string;
@@ -16,7 +17,10 @@ export interface Variable {
     value: any;
     min?: number;
     max?: number;
+    step?: number;
     options?: string[]; // For enums
+    section?: string; // Grouping
+    order?: number; // Sorting order
 }
 
 export interface Concept {
