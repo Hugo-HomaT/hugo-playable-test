@@ -11,7 +11,7 @@ export function getMRAIDWrapper(variablesJson: string): string {
     'use strict';
     
     // Inject Homa variables
-    window.HomaVars = ${variablesJson};
+    window.HOMA_CONFIG = ${variablesJson};
     
     // Track first user interaction
     let hasUserInteracted = false;
@@ -147,7 +147,7 @@ export function getMintegralSDK(variablesJson: string): string {
 // Mintegral SDK Integration
 (function() {
     // Inject Homa variables
-    window.HomaVars = ${variablesJson};
+    window.HOMA_CONFIG = ${variablesJson};
     
     // Mintegral tracking
     window.install = function() {

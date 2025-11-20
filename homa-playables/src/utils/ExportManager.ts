@@ -12,7 +12,15 @@ export async function exportProject(
     projectName: string = 'playable'
 ): Promise<Blob> {
     const zip = await JSZip.loadAsync(originalZipBlob);
-    const varsJson = JSON.stringify(values);
+
+    // Transform values into Unity's expected format: {variables: [{name, value}]}
+    const unityConfig = {
+        variables: Object.entries(values).map(([name, value]) => ({
+            name,
+            value: String(value) // Unity expects string values
+        }))
+    };
+    const varsJson = JSON.stringify(unityConfig);
 
     if (network === 'mintegral') {
         return await exportMintegral(zip, varsJson, projectName);
