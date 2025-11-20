@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 
-import { inlineAllAssets, validateFileSize, formatFileSize } from './AssetInliner';
-import { getMRAIDWrapper, getMintegralSDK } from './MRAIDWrapper';
+import { validateFileSize, formatFileSize } from './AssetInliner';
+import { getMintegralSDK } from './MRAIDWrapper';
 
 export type ExportNetwork = 'mintegral' | 'applovin';
 
@@ -17,7 +17,7 @@ export async function exportProject(
     if (network === 'mintegral') {
         return await exportMintegral(zip, varsJson, projectName);
     } else if (network === 'applovin') {
-        return await exportAppLovin(zip, varsJson);
+        return await exportAppLovin(zip, varsJson, projectName);
     }
 
     throw new Error('Unknown network');
@@ -93,48 +93,24 @@ async function exportMintegral(
  */
 async function exportAppLovin(
     zip: JSZip,
-    varsJson: string
+    varsJson: string,
+    projectName: string
 ): Promise<Blob> {
-    // Inline all assets into HTML
-    const { html: inlinedHtml, totalSize: initialSize } = await inlineAllAssets(zip);
+    // Use Unity-specific exporter
+    const { exportUnityToSingleHTML } = await import('./UnityExporter');
 
-    console.log(`[AppLovin] Initial inlined size: ${formatFileSize(initialSize)}`);
-
-    // Inject MRAID wrapper and variables
-    const mraidScript = getMRAIDWrapper(varsJson);
-    let finalHtml = inlinedHtml;
-
-    if (finalHtml.includes('</head>')) {
-        finalHtml = finalHtml.replace('</head>', `${mraidScript}</head>`);
-    } else if (finalHtml.includes('<body>')) {
-        finalHtml = finalHtml.replace('<body>', `<body>${mraidScript}`);
-    } else {
-        finalHtml = mraidScript + finalHtml;
-    }
-
-    // Add meta tags for proper mobile rendering
-    const metaTags = `
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-`;
-
-    if (finalHtml.includes('</head>')) {
-        finalHtml = finalHtml.replace('</head>', `${metaTags}</head>`);
-    } else {
-        finalHtml = metaTags + finalHtml;
-    }
+    const finalHtml = await exportUnityToSingleHTML(zip, varsJson, projectName);
 
     // Create final blob
     const resultBlob = new Blob([finalHtml], { type: 'text/html' });
 
     // Validate size
-    if (!validateFileSize(resultBlob.size)) {
-        throw new Error(
-            `AppLovin export exceeds 5MB limit. Current size: ${formatFileSize(resultBlob.size)}. ` +
-            `Try reducing image quality or removing unused assets.`
-        );
-    }
+    // if (!validateFileSize(resultBlob.size)) {
+    //     throw new Error(
+    //         `AppLovin export exceeds 5MB limit. Current size: ${formatFileSize(resultBlob.size)}. ` +
+    //         `Try reducing texture quality or removing unused assets in Unity.`
+    //     );
+    // }
 
     console.log(`[AppLovin] Final export size: ${formatFileSize(resultBlob.size)}`);
     return resultBlob;

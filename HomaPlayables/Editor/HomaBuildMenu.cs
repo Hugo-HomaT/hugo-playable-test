@@ -122,6 +122,12 @@ namespace HomaPlayables.Editor
                     // 4. Write Config
                     File.WriteAllText(Path.Combine(buildFolder, "homa_config.json"), json);
 
+                    // 4.5. Optimize Assets (if enabled)
+                    if (config.optimization.enableAssetOptimization)
+                    {
+                        OptimizeAssets(buildFolder);
+                    }
+
                     // 5. Zip
                     if (File.Exists(zipPath)) File.Delete(zipPath);
                     System.IO.Compression.ZipFile.CreateFromDirectory(buildFolder, zipPath);
@@ -152,6 +158,96 @@ namespace HomaPlayables.Editor
                     Debug.LogError("[Homa] Build failed");
                 }
             } 
+        }
+
+        /// <summary>
+        /// Optimizes PNG assets in the build folder using pngquant.
+        /// </summary>
+        private static void OptimizeAssets(string buildFolder)
+        {
+            Debug.Log("[Homa] Starting asset optimization...");
+            
+            // Path to pngquant tool
+            string pngquantPath = @"C:\Users\hugod\Desktop\6.4.0\tools\pngquant\win64\pngquant.exe";
+            
+            // Check if tool exists
+            if (!System.IO.File.Exists(pngquantPath))
+            {
+                Debug.LogWarning($"[Homa] pngquant not found at {pngquantPath}. Skipping PNG optimization.");
+                return;
+            }
+            
+            // Find all PNG files in build folder
+            string[] pngFiles = System.IO.Directory.GetFiles(buildFolder, "*.png", System.IO.SearchOption.AllDirectories);
+            
+            if (pngFiles.Length == 0)
+            {
+                Debug.Log("[Homa] No PNG files found to optimize.");
+                return;
+            }
+            
+            long totalOriginalSize = 0;
+            long totalOptimizedSize = 0;
+            int optimizedCount = 0;
+            int failedCount = 0;
+            
+            foreach (string pngFile in pngFiles)
+            {
+                try
+                {
+                    // Get original size
+                    System.IO.FileInfo originalFile = new System.IO.FileInfo(pngFile);
+                    long originalSize = originalFile.Length;
+                    totalOriginalSize += originalSize;
+                    
+                    // Run pngquant: --quality 65-80 --force --ext .png --skip-if-larger <file>
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = pngquantPath,
+                        Arguments = $"--quality 65-80 --force --ext .png --skip-if-larger \"{pngFile}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    
+                    using (var process = System.Diagnostics.Process.Start(startInfo))
+                    {
+                        process.WaitForExit(5000); // 5 second timeout per file
+                        
+                        // Check result
+                        System.IO.FileInfo optimizedFile = new System.IO.FileInfo(pngFile);
+                        long optimizedSize = optimizedFile.Length;
+                        totalOptimizedSize += optimizedSize;
+                        
+                        if (optimizedSize < originalSize)
+                        {
+                            optimizedCount++;
+                            float savedKB = (originalSize - optimizedSize) / 1024f;
+                            Debug.Log($"[Homa] Optimized: {System.IO.Path.GetFileName(pngFile)} ({originalSize / 1024f:F1} KB → {optimizedSize / 1024f:F1} KB, saved {savedKB:F1} KB)");
+                        }
+                        else
+                        {
+                            // File was skipped or not optimized
+                            Debug.Log($"[Homa] Skipped: {System.IO.Path.GetFileName(pngFile)} (already optimal)");
+                        }
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    failedCount++;
+                    Debug.LogWarning($"[Homa] Failed to optimize {System.IO.Path.GetFileName(pngFile)}: {e.Message}");
+                }
+            }
+            
+            // Summary
+            float totalSavedMB = (totalOriginalSize - totalOptimizedSize) / (1024f * 1024f);
+            Debug.Log($"[Homa] ✓ PNG Optimization Complete: {optimizedCount}/{pngFiles.Length} files optimized, saved {totalSavedMB:F2} MB");
+            
+            if (failedCount > 0)
+            {
+                Debug.LogWarning($"[Homa] {failedCount} file(s) failed to optimize.");
+            }
         }
 
         private static void ApplyOptimizationSettings(HomaBuildConfig.OptimizationConfig optimization)

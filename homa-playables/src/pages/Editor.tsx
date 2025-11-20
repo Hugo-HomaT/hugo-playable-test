@@ -209,11 +209,30 @@ export const Editor: React.FC = () => {
             if (!zipBlob) throw new Error('Project zip not found');
 
             const values = variables.reduce((acc, v) => ({ ...acc, [v.name]: v.value }), {});
-            await exportProject(zipBlob as File, values, network, `${project.name}-${currentConcept?.name}`);
+            const exportBlob = await exportProject(zipBlob as File, values, network, `${project.name}-${currentConcept?.name}`);
+
+            // Download the exported file
+            const filename = network === 'applovin'
+                ? `${project.name}-${currentConcept?.name}-applovin.html`
+                : `${project.name}-${currentConcept?.name}-mintegral.zip`;
+            downloadBlob(exportBlob, filename);
+
+            console.log(`[Export] Successfully exported ${filename}`);
         } catch (err) {
             console.error('Export failed:', err);
-            alert('Export failed. See console for details.');
+            alert(`Export failed: ${err instanceof Error ? err.message : 'See console for details.'}`);
         }
+    };
+
+    const downloadBlob = (blob: Blob, filename: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     };
 
     const openMediaPicker = (variableName: string, assetType: string) => {

@@ -56,6 +56,10 @@ namespace HomaPlayables.Editor
             public bool enableAudioOptimization = true;
             public int maxTextureSize = 1024;
             public bool convertAudioToMono = true;
+            
+            // Asset optimization using external tools
+            public bool enableAssetOptimization = true; // Use pngquant to optimize PNG files
+            public bool useBrotliArchive = false; // Use Brotli compression for final archive
         }
 
         [Serializable]

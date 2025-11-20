@@ -116,6 +116,17 @@ namespace HomaPlayables.Editor
                 EditorGUI.indentLevel--;
             }
 
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Advanced Compression", EditorStyles.boldLabel);
+            _config.optimization.enableAssetOptimization = EditorGUILayout.Toggle("Optimize PNG Assets", _config.optimization.enableAssetOptimization);
+            EditorGUILayout.HelpBox("Uses pngquant to compress PNG files in the build output. Requires external tools installed.", MessageType.Info);
+            
+            _config.optimization.useBrotliArchive = EditorGUILayout.Toggle("Use Brotli Archive (Experimental)", _config.optimization.useBrotliArchive);
+            if (_config.optimization.useBrotliArchive)
+            {
+                EditorGUILayout.HelpBox("Brotli compression may not be compatible with all platforms. Use for testing only.", MessageType.Warning);
+            }
+
             if (EditorGUI.EndChangeCheck())
             {
                 SaveConfig();
