@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Variable } from '../types';
+import { Upload, FileAudio, Image as ImageIcon, Video } from 'lucide-react';
 
 interface VariableInspectorProps {
     variables: Variable[];
@@ -8,6 +9,7 @@ interface VariableInspectorProps {
     onResetSection?: (section: string) => void;
     onResetAll?: () => void;
     onReload?: () => void;
+    onAssetSelect?: (variableName: string, assetType: string) => void;
 }
 
 export const VariableInspector: React.FC<VariableInspectorProps> = ({
@@ -16,7 +18,8 @@ export const VariableInspector: React.FC<VariableInspectorProps> = ({
     onResetVariable,
     onResetSection,
     onResetAll,
-    onReload
+    onReload,
+    onAssetSelect
 }) => {
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
@@ -58,6 +61,51 @@ export const VariableInspector: React.FC<VariableInspectorProps> = ({
     }, [groupedVariables.length]); // Re-run only if number of groups changes roughly
 
     const renderInput = (variable: Variable) => {
+        // Handle Asset Types
+        if (variable.type.startsWith('Asset:')) {
+            const assetType = variable.type.split(':')[1];
+            const hasValue = variable.value && variable.value !== 'Reference' && variable.value !== '';
+
+            return (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%' }}>
+                    <button
+                        onClick={() => onAssetSelect && onAssetSelect(variable.name, assetType)}
+                        style={{
+                            flex: 1,
+                            padding: '8px',
+                            backgroundColor: 'var(--color-bg-tertiary)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--color-text-primary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '13px',
+                            textAlign: 'left',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        {hasValue ? (
+                            <>
+                                {assetType === 'AudioClip' ? <FileAudio size={14} /> :
+                                    assetType === 'Texture2D' || assetType === 'Sprite' ? <ImageIcon size={14} /> :
+                                        assetType === 'VideoClip' ? <Video size={14} /> : <Upload size={14} />}
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {variable.value.split('/').pop()}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <Upload size={14} color="var(--color-text-secondary)" />
+                                <span style={{ color: 'var(--color-text-secondary)' }}>Choose File...</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            );
+        }
+
         const input = (() => {
             switch (variable.type) {
                 case 'int':

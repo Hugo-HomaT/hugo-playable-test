@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PlayablePreview } from '../components/PlayablePreview';
 import { VariableInspector } from '../components/VariableInspector';
+import { MediaPickerModal } from '../components/MediaPickerModal';
 import { exportProject, type ExportNetwork } from '../utils/ExportManager';
 import { parseProjectZip } from '../utils/ZipUtils';
 import { getProject, getProjectZip, savePreviewFile, clearPreviewFiles, updateProject } from '../db';
-import type { Project, Variable, Concept } from '../types';
+import type { Project, Variable, Concept, MediaItem } from '../types';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
     constructor(props: { children: React.ReactNode }) {
@@ -45,6 +46,8 @@ export const Editor: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+    const [activeAssetVariable, setActiveAssetVariable] = useState<{ name: string, type: string } | null>(null);
     const debounceTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
@@ -213,6 +216,40 @@ export const Editor: React.FC = () => {
         }
     };
 
+    const openMediaPicker = (variableName: string, assetType: string) => {
+        setActiveAssetVariable({ name: variableName, type: assetType });
+        setMediaPickerOpen(true);
+    };
+
+    const handleAssetSelect = async (item: MediaItem) => {
+        if (!activeAssetVariable || !id) return;
+
+        try {
+            // Save the file to the preview environment
+            // We'll use a convention like 'assets/[filename]'
+            const path = `assets/${item.name}`;
+            await savePreviewFile(id, path, item.blob);
+
+            // Update the variable with the path
+            handleVariableUpdate(activeAssetVariable.name, path);
+            setMediaPickerOpen(false);
+            setActiveAssetVariable(null);
+        } catch (err) {
+            console.error('Failed to select asset:', err);
+            alert('Failed to select asset');
+        }
+    };
+
+    const getMediaTypesForAsset = (assetType: string) => {
+        switch (assetType) {
+            case 'AudioClip': return ['audio'];
+            case 'Texture2D':
+            case 'Sprite': return ['image'];
+            case 'VideoClip': return ['video'];
+            default: return undefined;
+        }
+    };
+
     if (loading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -326,9 +363,17 @@ export const Editor: React.FC = () => {
                         onResetSection={handleResetSection}
                         onResetAll={handleResetAll}
                         onReload={handleReload}
+                        onAssetSelect={openMediaPicker}
                     />
                 </div>
             </div>
+
+            <MediaPickerModal
+                isOpen={mediaPickerOpen}
+                onClose={() => setMediaPickerOpen(false)}
+                onSelect={handleAssetSelect}
+                allowedTypes={activeAssetVariable ? getMediaTypesForAsset(activeAssetVariable.type) : undefined}
+            />
         </ErrorBoundary>
     );
 };
