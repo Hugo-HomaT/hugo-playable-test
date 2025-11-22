@@ -19,15 +19,20 @@ namespace HomaPlayables.Editor
         {
             if (report == null) return;
 
+            var result = new AnalysisResult();
+            result.buildDate = System.DateTime.Now.ToString();
+            result.totalSize = (long)report.summary.totalSize;
+            result.duration = report.summary.totalTime.ToString();
+
             var sb = new StringBuilder();
             sb.AppendLine("# Homa Playable Build Report");
-            sb.AppendLine($"**Date:** {System.DateTime.Now}");
-            sb.AppendLine($"**Total Size:** {EditorUtility.FormatBytes((long)report.summary.totalSize)}");
-            sb.AppendLine($"**Duration:** {report.summary.totalTime}");
+            sb.AppendLine($"**Date:** {result.buildDate}");
+            sb.AppendLine($"**Total Size:** {EditorUtility.FormatBytes(result.totalSize)}");
+            sb.AppendLine($"**Duration:** {result.duration}");
             sb.AppendLine();
 
             // 1. Parse Editor Log for Detailed Breakdown
-            ParseEditorLog(sb);
+            ParseEditorLog(sb, result);
 
             // 2. Output Files
             sb.AppendLine("## 📂 Build Output Files");
@@ -52,20 +57,36 @@ namespace HomaPlayables.Editor
             bool hasLargeWasm = fileInfos.Any(f => f.Extension == ".wasm" && f.Length > 2 * 1024 * 1024);
             if (hasLargeWasm)
             {
-                sb.AppendLine("- **Large Code Size**: Your `.wasm` file is over 2MB. Try enabling 'Strip Engine Code' or 'Strip Physics 2D'.");
+                string tip = "Large Code Size: Your .wasm file is over 2MB. Try enabling 'Strip Engine Code' or 'Strip Physics 2D'.";
+                sb.AppendLine($"- {tip}");
+                result.tips.Add(tip);
             }
             
             bool hasLargeData = fileInfos.Any(f => f.Extension == ".data" && f.Length > 2 * 1024 * 1024);
             if (hasLargeData)
             {
-                sb.AppendLine("- **Large Assets**: Your `.data` file is over 2MB. Check the 'Top Assets' list above.");
-                sb.AppendLine("  - Use 'Optimize Textures' (Max 1024 or 512).");
-                sb.AppendLine("  - Force Audio to Mono.");
+                string tip = "Large Assets: Your .data file is over 2MB. Check the 'Top Assets' list.";
+                sb.AppendLine($"- {tip}");
+                result.tips.Add(tip);
+                result.tips.Add("Use 'Optimize Textures' (Max 1024 or 512).");
+                result.tips.Add("Force Audio to Mono.");
             }
 
-            // Save Report
+            // Save Markdown Report
             string reportPath = Path.Combine(outputFolder, "BuildReport.md");
             File.WriteAllText(reportPath, sb.ToString());
+            
+            // Save JSON Analysis for Window
+            string jsonPath = Path.Combine(Application.dataPath, "../HomaAnalysis.json");
+            try
+            {
+                File.WriteAllText(jsonPath, JsonUtility.ToJson(result, true));
+                Debug.Log($"[Homa] 📊 Analysis JSON saved to: {jsonPath}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Homa] Failed to save analysis JSON: {e.Message}");
+            }
             
             Debug.Log($"[Homa] 📊 Build Analysis saved to: {reportPath}");
             
@@ -73,7 +94,7 @@ namespace HomaPlayables.Editor
             EditorUtility.OpenWithDefaultApp(reportPath);
         }
 
-        private static void ParseEditorLog(StringBuilder sb)
+        private static void ParseEditorLog(StringBuilder sb, AnalysisResult result)
         {
             string logPath = GetEditorLogPath();
             if (!File.Exists(logPath))
@@ -85,8 +106,6 @@ namespace HomaPlayables.Editor
             try
             {
                 // Read the log file. It can be huge, but we only need the end.
-                // However, File.ReadAllLines might be locked or too slow.
-                // Let's try reading with FileShare.ReadWrite
                 using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 using (var sr = new StreamReader(fs))
                 {
@@ -121,6 +140,13 @@ namespace HomaPlayables.Editor
                         if (category == "Complete size") continue;
                         
                         sb.AppendLine($"| {category} | {size} | {percent} |");
+                        
+                        result.categories.Add(new AnalysisResult.CategoryBreakdown
+                        {
+                            name = category,
+                            size = size,
+                            percent = percent
+                        });
                     }
                     sb.AppendLine();
 
@@ -135,8 +161,6 @@ namespace HomaPlayables.Editor
                     {
                         string assetsContent = reportContent.Substring(assetsIndex);
                         // Regex for lines like: " 4.2 mb  50.0% Assets/Textures/BigBG.png"
-                        // Note: Format varies slightly by Unity version.
-                        // Common format: " <size> <unit> <percent>% <path>"
                         
                         var assetRegex = new Regex(@"^\s*([0-9.]+\s+[a-z]+)\s+[0-9.]+\s*%\s+(.+)$", RegexOptions.Multiline);
                         var assetMatches = assetRegex.Matches(assetsContent);
@@ -151,6 +175,13 @@ namespace HomaPlayables.Editor
                             string path = match.Groups[2].Value.Trim();
                             
                             sb.AppendLine($"| `{path}` | {size} |");
+                            
+                            result.topAssets.Add(new AnalysisResult.AssetInfo
+                            {
+                                path = path,
+                                size = size
+                            });
+                            
                             count++;
                         }
                     }
