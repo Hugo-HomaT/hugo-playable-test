@@ -2,6 +2,7 @@
     "name": "HomaPlayables.Editor",
     "rootNamespace": "HomaPlayables.Editor",
     "references": [
+        "Unity.TextMeshPro",
         "HomaPlayables.Runtime"
     ],
     "includePlatforms": [

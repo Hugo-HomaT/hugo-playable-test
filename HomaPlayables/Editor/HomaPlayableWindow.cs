@@ -128,7 +128,7 @@ namespace HomaPlayables.Editor
             {
                 EditorGUI.indentLevel++;
                 _config.optimization.maxTextureSize = EditorGUILayout.IntPopup("Max Texture Size", _config.optimization.maxTextureSize, 
-                    new string[] { "512", "1024", "2048" }, new int[] { 512, 1024, 2048 });
+                    new string[] { "256", "512", "1024", "2048" }, new int[] { 256, 512, 1024, 2048 });
                 EditorGUI.indentLevel--;
             }
 

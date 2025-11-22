@@ -87,6 +87,9 @@ namespace HomaPlayables.Editor
                         textureOptimizer.OptimizeTextures(config.optimization.maxTextureSize);
                     }
 
+                    // 0.8. Optimize Fonts (DISABLED - needs proper atlas regeneration)
+                    // fontOptimizer.OptimizeFonts();
+
                     // 1. Apply Optimization Settings
                     ApplyOptimizationSettings(config.optimization);
 
@@ -195,6 +198,7 @@ namespace HomaPlayables.Editor
                     // Restore everything
                     fileHider.RestoreAll();
                     textureOptimizer.RestoreTextures();
+                    // fontOptimizer.RestoreFonts();
                     
                     if (config.optimization.enablePhysics2DStripping)
                     {
