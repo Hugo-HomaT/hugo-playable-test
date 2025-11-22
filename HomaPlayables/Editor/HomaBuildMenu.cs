@@ -84,7 +84,7 @@ namespace HomaPlayables.Editor
                     // 0.7. Optimize Textures (The Crusher)
                     if (config.optimization.enableTextureOptimization)
                     {
-                        textureOptimizer.OptimizeTextures(config.optimization.maxTextureSize);
+                        textureOptimizer.OptimizeTextures(config.optimization.maxTextureSize, config.optimization.textureOverrides);
                     }
 
                     // 0.8. Optimize Fonts (DISABLED - needs proper atlas regeneration)

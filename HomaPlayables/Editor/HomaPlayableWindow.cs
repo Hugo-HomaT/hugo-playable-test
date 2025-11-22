@@ -13,7 +13,10 @@ namespace HomaPlayables.Editor
         private AnalysisResult _analysis;
         private Vector2 _scrollPosition;
         private int _selectedTab = 0;
-        private readonly string[] _tabs = { "Dashboard", "Build Settings", "Variables", "SDKs", "Analysis" };
+        private readonly string[] _tabs = { "Dashboard", "Build Settings", "Variables", "SDKs", "Textures", "Analysis" };
+        private List<string> _detectedTextures;
+        private Vector2 _textureScrollPosition;
+        private string _textureSearchFilter = "";
 
         [MenuItem("Homa/Playable Window", false, 0)]
         public static void ShowWindow()
@@ -85,6 +88,9 @@ namespace HomaPlayables.Editor
                     DrawSDKs();
                     break;
                 case 4:
+                    DrawTextures();
+                    break;
+                case 5:
                     DrawAnalysis();
                     break;
             }
@@ -128,7 +134,7 @@ namespace HomaPlayables.Editor
             {
                 EditorGUI.indentLevel++;
                 _config.optimization.maxTextureSize = EditorGUILayout.IntPopup("Max Texture Size", _config.optimization.maxTextureSize, 
-                    new string[] { "256", "512", "1024", "2048" }, new int[] { 256, 512, 1024, 2048 });
+                    new string[] { "128", "256", "512", "1024", "2048" }, new int[] { 128, 256, 512, 1024, 2048 });
                 EditorGUI.indentLevel--;
             }
 
@@ -266,6 +272,156 @@ namespace HomaPlayables.Editor
                 _config.exclusions.customExclusionPatterns.Add("");
                 SaveConfig();
             }
+        }
+
+        private void DrawTextures()
+        {
+            EditorGUILayout.LabelField("Texture Management", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Set custom size limits for individual textures. These override the global max texture size during builds.", MessageType.Info);
+            
+            if (GUILayout.Button("Scan Project Textures"))
+            {
+                ScanTextures();
+            }
+
+            if (_detectedTextures == null || _detectedTextures.Count == 0)
+            {
+                EditorGUILayout.LabelField("No textures scanned. Click 'Scan Project Textures' to begin.");
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField($"Found {_detectedTextures.Count} textures", EditorStyles.boldLabel);
+            
+            // Search filter
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Search:", GUILayout.Width(60));
+            _textureSearchFilter = EditorGUILayout.TextField(_textureSearchFilter);
+            if (GUILayout.Button("Clear", GUILayout.Width(60)))
+            {
+                _textureSearchFilter = "";
+            }
+            EditorGUILayout.EndHorizontal();
+            
+            // Filter textures
+            var filteredTextures = _detectedTextures;
+            if (!string.IsNullOrEmpty(_textureSearchFilter))
+            {
+                filteredTextures = _detectedTextures.Where(t => 
+                    t.ToLower().Contains(_textureSearchFilter.ToLower())).ToList();
+            }
+            
+            EditorGUILayout.LabelField($"Showing {filteredTextures.Count} textures", EditorStyles.miniLabel);
+            
+            // Table header
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.LabelField("Texture", EditorStyles.boldLabel, GUILayout.Width(300));
+            EditorGUILayout.LabelField("Current Size", EditorStyles.boldLabel, GUILayout.Width(100));
+            EditorGUILayout.LabelField("Build Size", EditorStyles.boldLabel, GUILayout.Width(100));
+            EditorGUILayout.EndHorizontal();
+
+            _textureScrollPosition = EditorGUILayout.BeginScrollView(_textureScrollPosition, GUILayout.Height(400));
+            
+            foreach (var texturePath in filteredTextures)
+            {
+                EditorGUILayout.BeginHorizontal();
+                
+                // Texture name (clickable)
+                string displayName = texturePath.Replace("Assets/", "");
+                if (GUILayout.Button(displayName, EditorStyles.label, GUILayout.Width(300)))
+                {
+                    var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(texturePath);
+                    if (obj != null)
+                    {
+                        Selection.activeObject = obj;
+                        EditorGUIUtility.PingObject(obj);
+                    }
+                }
+                
+                // Current size
+                TextureImporter importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+                if (importer != null)
+                {
+                    EditorGUILayout.LabelField(importer.maxTextureSize.ToString(), GUILayout.Width(100));
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("N/A", GUILayout.Width(100));
+                }
+                
+                // Build size override
+                var existingOverride = _config.optimization.textureOverrides.Find(o => o.path == texturePath);
+                int currentOverride = existingOverride != null ? existingOverride.maxSize : _config.optimization.maxTextureSize;
+                
+                EditorGUI.BeginChangeCheck();
+                int newSize = EditorGUILayout.IntPopup(currentOverride, 
+                    new string[] { "Default", "128", "256", "512", "1024", "2048" }, 
+                    new int[] { _config.optimization.maxTextureSize, 128, 256, 512, 1024, 2048 },
+                    GUILayout.Width(100));
+                
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (newSize == _config.optimization.maxTextureSize)
+                    {
+                        // Remove override (use default)
+                        _config.optimization.textureOverrides.RemoveAll(o => o.path == texturePath);
+                    }
+                    else
+                    {
+                        // Add or update override
+                        if (existingOverride != null)
+                        {
+                            existingOverride.maxSize = newSize;
+                        }
+                        else
+                        {
+                            _config.optimization.textureOverrides.Add(new HomaBuildConfig.TextureOverride
+                            {
+                                path = texturePath,
+                                maxSize = newSize
+                            });
+                        }
+                    }
+                    SaveConfig();
+                }
+                
+                EditorGUILayout.EndHorizontal();
+            }
+            
+            EditorGUILayout.EndScrollView();
+            
+            if (_config.optimization.textureOverrides.Count > 0)
+            {
+                EditorGUILayout.Space();
+                if (GUILayout.Button("Clear All Overrides"))
+                {
+                    if (EditorUtility.DisplayDialog("Clear Overrides", 
+                        $"Remove all {_config.optimization.textureOverrides.Count} texture size overrides?", 
+                        "Yes", "No"))
+                    {
+                        _config.optimization.textureOverrides.Clear();
+                        SaveConfig();
+                    }
+                }
+            }
+        }
+
+        private void ScanTextures()
+        {
+            _detectedTextures = new List<string>();
+            string[] guids = AssetDatabase.FindAssets("t:Texture", new[] { "Assets" });
+            
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.Contains("/Editor/") && !path.Contains("/Gizmos/"))
+                {
+                    _detectedTextures.Add(path);
+                }
+            }
+            
+            _detectedTextures.Sort();
+            Debug.Log($"[Homa] Found {_detectedTextures.Count} textures");
         }
 
         private void DrawAnalysis()

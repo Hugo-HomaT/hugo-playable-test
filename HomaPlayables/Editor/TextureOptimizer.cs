@@ -25,17 +25,19 @@ namespace HomaPlayables.Editor
         /// <summary>
         /// Finds all textures in Assets (excluding Editor) and applies aggressive compression.
         /// </summary>
-        /// <param name="maxSize">Maximum texture size (e.g. 512)</param>
-        public void OptimizeTextures(int maxSize)
+        /// <param name="maxSize">Default maximum texture size (e.g. 512)</param>
+        /// <param name="overrides">Per-texture size overrides</param>
+        public void OptimizeTextures(int maxSize, List<HomaBuildConfig.TextureOverride> overrides = null)
         {
             if (_isOptimized) return;
 
-            Debug.Log($"[Homa] 🔨 Starting Texture Crusher (Max Size: {maxSize})...");
+            Debug.Log($"[Homa] 🔨 Starting Texture Crusher (Default Max Size: {maxSize})...");
             
             // Find all textures in Assets folder
             string[] guids = AssetDatabase.FindAssets("t:Texture", new[] { "Assets" });
             
             int count = 0;
+            int overrideCount = 0;
             
             foreach (string guid in guids)
             {
@@ -48,8 +50,17 @@ namespace HomaPlayables.Editor
                 TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (importer == null) continue;
 
-                // Skip if already small enough and compressed (optional optimization to save time)
-                // But generally we want to force Crunched compression if possible.
+                // Check for per-texture override
+                int targetSize = maxSize;
+                if (overrides != null)
+                {
+                    var textureOverride = overrides.Find(o => o.path == path);
+                    if (textureOverride != null)
+                    {
+                        targetSize = textureOverride.maxSize;
+                        overrideCount++;
+                    }
+                }
 
                 // Backup settings
                 var backup = new TextureBackup
@@ -60,27 +71,15 @@ namespace HomaPlayables.Editor
                     crunchedCompression = importer.crunchedCompression,
                     compressionQuality = importer.compressionQuality
                 };
-                
-                // Get platform specific settings if needed, but for now we modify default
-                // Note: WebGL build might use "WebGL" platform settings. 
-                // Modifying Default is usually safer as a catch-all, but let's check WebGL override.
-                var webglSettings = importer.GetPlatformTextureSettings("WebGL");
-                if (webglSettings.overridden)
-                {
-                    // If WebGL specific settings exist, we should probably back those up too or just clear them?
-                    // For simplicity, let's just modify the Default settings and hope they propagate, 
-                    // or we could force WebGL settings.
-                    // Let's stick to modifying Default for now, as it's the base.
-                }
 
                 _backups.Add(backup);
 
                 // Apply aggressive settings
                 bool changed = false;
                 
-                if (importer.maxTextureSize > maxSize)
+                if (importer.maxTextureSize > targetSize)
                 {
-                    importer.maxTextureSize = maxSize;
+                    importer.maxTextureSize = targetSize;
                     changed = true;
                 }
 
@@ -101,7 +100,7 @@ namespace HomaPlayables.Editor
             }
             
             _isOptimized = true;
-            Debug.Log($"[Homa] 🔨 Crushed {count} textures to max {maxSize}px.");
+            Debug.Log($"[Homa] 🔨 Crushed {count} textures (Default: {maxSize}px, {overrideCount} with custom sizes).");
         }
 
         /// <summary>

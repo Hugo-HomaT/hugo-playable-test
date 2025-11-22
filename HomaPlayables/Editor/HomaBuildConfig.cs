@@ -61,6 +61,16 @@ namespace HomaPlayables.Editor
             public bool enableAssetOptimization = true; // Use pngquant to optimize PNG files
             public bool useBrotliArchive = false; // Use Brotli compression for final archive
             public bool enablePhysics2DStripping = false; // Remove Physics 2D module during build
+            
+            // Per-texture size overrides (key: asset path, value: max size)
+            public List<TextureOverride> textureOverrides = new List<TextureOverride>();
+        }
+
+        [Serializable]
+        public class TextureOverride
+        {
+            public string path;
+            public int maxSize;
         }
 
         [Serializable]
