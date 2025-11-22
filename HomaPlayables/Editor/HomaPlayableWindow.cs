@@ -98,6 +98,7 @@ namespace HomaPlayables.Editor
             EditorGUI.BeginChangeCheck();
 
             _config.optimization.enableCodeStripping = EditorGUILayout.Toggle("Strip Engine Code", _config.optimization.enableCodeStripping);
+            _config.optimization.enablePhysics2DStripping = EditorGUILayout.Toggle("Strip Physics 2D", _config.optimization.enablePhysics2DStripping);
             _config.optimization.enableTextureOptimization = EditorGUILayout.Toggle("Optimize Textures", _config.optimization.enableTextureOptimization);
             
             if (_config.optimization.enableTextureOptimization)

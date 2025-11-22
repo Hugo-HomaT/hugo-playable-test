@@ -53,109 +53,153 @@ namespace HomaPlayables.Editor
             // Use SettingsRestorer to ensure project settings are reverted after build
             using (new SettingsRestorer())
             {
-                // 1. Apply Optimization Settings
-                ApplyOptimizationSettings(config.optimization);
-
-                // 2. Scan for Variables and Events
-                var variables = ScanForVariables();
-                var events = HomaEventTracker.GetRegisteredEvents();
+                var fileHider = new FileHider();
+                var textureOptimizer = new TextureOptimizer();
                 
-                // Create runtime config
-                var runtimeConfig = new HomaConfig 
-                { 
-                    version = config.version, 
-                    variables = variables,
-                    events = events,
-                    buildInfo = new BuildInfo
-                    {
-                        unityVersion = Application.unityVersion,
-                        pluginVersion = config.metadata.pluginVersion,
-                        buildDate = System.DateTime.UtcNow.ToString("o"),
-                        compressionFormat = "Gzip" // WebGL always uses Gzip in this setup
-                    },
-                    excludedSDKs = config.exclusions.autoExcludeSDKs ? sdkResult.DetectedSDKs : new List<string>()
-                };
-                string json = JsonUtility.ToJson(runtimeConfig, true);
-
-                // 3. Build WebGL
-                // Ensure directory exists
-                if (Directory.Exists(buildFolder))
+                try
                 {
-                    Directory.Delete(buildFolder, true);
-                }
-                Directory.CreateDirectory(buildFolder);
-                
-                BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
-                buildPlayerOptions.scenes = config.scenes.GetEnabledScenes();
-                buildPlayerOptions.locationPathName = buildFolder;
-                buildPlayerOptions.target = BuildTarget.WebGL;
-                buildPlayerOptions.options = BuildOptions.None;
-
-                Debug.Log("[Homa] Starting optimized WebGL build...");
-                var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
-
-                if (report.summary.result == BuildResult.Succeeded)
-                {
-                    // Log build statistics
-                    float sizeMB = report.summary.totalSize / (1024f * 1024f);
-                    Debug.Log($"[Homa] Build succeeded: {sizeMB:F2} MB ({report.summary.totalSize:N0} bytes)");
-                    
-                    // Update metadata
-                    config.metadata.lastBuildDate = System.DateTime.Now.ToString();
-                    config.metadata.lastBuildSize = (long)report.summary.totalSize;
-                    config.metadata.compressionFormat = "Gzip";
-                    config.metadata.unityVersion = Application.unityVersion;
-                    
-                    // Save config to persist metadata
-                    // Since HomaBuildConfig is a plain class, we can't use SetDirty.
-                    // We should save it to the JSON file if we know the path, or rely on the Window to save it.
-                    // However, the Window might not be open.
-                    // Let's try to find the default config path or just skip saving if not critical.
-                    // Ideally, HomaPlayableWindow should handle the persistence.
-                    // For now, let's try to save to the default location if it exists.
-                    string configPath = Path.Combine(Application.dataPath, "../HomaPlayableConfig.json");
-                    if (File.Exists(configPath))
+                    // 0.5. Hide SDKs (Real Exclusion)
+                    if (sdkResult.DetectedSDKs.Count > 0 && config.exclusions.autoExcludeSDKs)
                     {
-                        config.Save(configPath);
+                        Debug.Log("[Homa] Hiding SDK folders for build...");
+                        foreach (var sdkPath in sdkResult.DetectedSDKs)
+                        {
+                            // sdkPath is relative to Assets, we need full path
+                            // But wait, DetectSDKs returns paths found by Directory.GetDirectories which returns full paths?
+                            // Let's check HomaSDKExcluder.DetectSDKs implementation.
+                            // It returns full paths.
+                            fileHider.HideDirectory(sdkPath);
+                        }
+                        
+                        // Force asset database refresh to ensure Unity sees the changes
+                        AssetDatabase.Refresh();
                     }
 
-                    // 4. Write Config
-                    File.WriteAllText(Path.Combine(buildFolder, "homa_config.json"), json);
-
-                    // 4.5. Optimize Assets (if enabled)
-                    if (config.optimization.enableAssetOptimization)
+                    // 0.6. Strip Physics 2D
+                    if (config.optimization.enablePhysics2DStripping)
                     {
-                        OptimizeAssets(buildFolder);
+                        PhysicsStripper.StripPhysics2D();
                     }
 
-                    // 5. Zip
-                    if (File.Exists(zipPath)) File.Delete(zipPath);
-                    System.IO.Compression.ZipFile.CreateFromDirectory(buildFolder, zipPath);
-                    
-                    // Check final ZIP size
-                    FileInfo zipInfo = new FileInfo(zipPath);
-                    float zipSizeMB = zipInfo.Length / (1024f * 1024f);
-                    Debug.Log($"[Homa] Playable zipped: {zipSizeMB:F2} MB ({zipInfo.Length:N0} bytes)");
-                    
-                    // Warn if exceeding 5MB
-                    if (zipSizeMB > 5f)
+                    // 0.7. Optimize Textures (The Crusher)
+                    if (config.optimization.enableTextureOptimization)
                     {
-                        Debug.LogWarning($"[Homa] WARNING: ZIP size ({zipSizeMB:F2} MB) exceeds 5MB limit for most ad networks!");
+                        textureOptimizer.OptimizeTextures(config.optimization.maxTextureSize);
                     }
-                    else if (zipSizeMB > 3f)
+
+                    // 1. Apply Optimization Settings
+                    ApplyOptimizationSettings(config.optimization);
+
+                    // 2. Scan for Variables and Events
+                    var variables = ScanForVariables();
+                    var events = HomaEventTracker.GetRegisteredEvents();
+                    
+                    // Create runtime config
+                    var runtimeConfig = new HomaConfig 
+                    { 
+                        version = config.version, 
+                        variables = variables,
+                        events = events,
+                        buildInfo = new BuildInfo
+                        {
+                            unityVersion = Application.unityVersion,
+                            pluginVersion = config.metadata.pluginVersion,
+                            buildDate = System.DateTime.UtcNow.ToString("o"),
+                            compressionFormat = "Gzip" // WebGL always uses Gzip in this setup
+                        },
+                        excludedSDKs = config.exclusions.autoExcludeSDKs ? sdkResult.DetectedSDKs : new List<string>()
+                    };
+                    string json = JsonUtility.ToJson(runtimeConfig, true);
+
+                    // 3. Build WebGL
+                    // Ensure directory exists
+                    if (Directory.Exists(buildFolder))
                     {
-                        Debug.LogWarning($"[Homa] ZIP size ({zipSizeMB:F2} MB) is above optimal 3MB target.");
+                        Directory.Delete(buildFolder, true);
+                    }
+                    Directory.CreateDirectory(buildFolder);
+                    
+                    BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
+                    buildPlayerOptions.scenes = config.scenes.GetEnabledScenes();
+                    buildPlayerOptions.locationPathName = buildFolder;
+                    buildPlayerOptions.target = BuildTarget.WebGL;
+                    buildPlayerOptions.options = BuildOptions.None;
+
+                    Debug.Log("[Homa] Starting optimized WebGL build...");
+                    var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+
+                    if (report.summary.result == BuildResult.Succeeded)
+                    {
+                        // Log build statistics
+                        float sizeMB = report.summary.totalSize / (1024f * 1024f);
+                        Debug.Log($"[Homa] Build succeeded: {sizeMB:F2} MB ({report.summary.totalSize:N0} bytes)");
+                        
+                        // Update metadata
+                        config.metadata.lastBuildDate = System.DateTime.Now.ToString();
+                        config.metadata.lastBuildSize = (long)report.summary.totalSize;
+                        config.metadata.compressionFormat = "Gzip";
+                        config.metadata.unityVersion = Application.unityVersion;
+                        
+                        // Save config to persist metadata
+                        string configPath = Path.Combine(Application.dataPath, "../HomaPlayableConfig.json");
+                        if (File.Exists(configPath))
+                        {
+                            config.Save(configPath);
+                        }
+
+                        // 4. Write Config
+                        File.WriteAllText(Path.Combine(buildFolder, "homa_config.json"), json);
+
+                        // 4.5. Optimize Assets (if enabled)
+                        if (config.optimization.enableAssetOptimization)
+                        {
+                            OptimizeAssets(buildFolder);
+                        }
+
+                        // 5. Zip
+                        if (File.Exists(zipPath)) File.Delete(zipPath);
+                        System.IO.Compression.ZipFile.CreateFromDirectory(buildFolder, zipPath);
+                        
+                        // Check final ZIP size
+                        FileInfo zipInfo = new FileInfo(zipPath);
+                        float zipSizeMB = zipInfo.Length / (1024f * 1024f);
+                        Debug.Log($"[Homa] Playable zipped: {zipSizeMB:F2} MB ({zipInfo.Length:N0} bytes)");
+                        
+                        // Warn if exceeding 5MB
+                        if (zipSizeMB > 5f)
+                        {
+                            Debug.LogWarning($"[Homa] WARNING: ZIP size ({zipSizeMB:F2} MB) exceeds 5MB limit for most ad networks!");
+                        }
+                        else if (zipSizeMB > 3f)
+                        {
+                            Debug.LogWarning($"[Homa] ZIP size ({zipSizeMB:F2} MB) is above optimal 3MB target.");
+                        }
+                        else
+                        {
+                            Debug.Log($"[Homa] ✓ ZIP size is within optimal range!");
+                        }
+                        
+                        
+                        EditorUtility.RevealInFinder(zipPath);
+
+                        // 6. Analyze Build
+                        BuildAnalyzer.AnalyzeBuild(report, buildFolder);
                     }
                     else
                     {
-                        Debug.Log($"[Homa] ✓ ZIP size is within optimal range!");
+                        Debug.LogError("[Homa] Build failed");
                     }
-                    
-                    EditorUtility.RevealInFinder(zipPath);
                 }
-                else
+                finally
                 {
-                    Debug.LogError("[Homa] Build failed");
+                    // Restore everything
+                    fileHider.RestoreAll();
+                    textureOptimizer.RestoreTextures();
+                    
+                    if (config.optimization.enablePhysics2DStripping)
+                    {
+                        PhysicsStripper.RestorePhysics2D();
+                    }
                 }
             } 
         }

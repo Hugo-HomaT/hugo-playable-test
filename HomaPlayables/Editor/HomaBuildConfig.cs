@@ -60,6 +60,7 @@ namespace HomaPlayables.Editor
             // Asset optimization using external tools
             public bool enableAssetOptimization = true; // Use pngquant to optimize PNG files
             public bool useBrotliArchive = false; // Use Brotli compression for final archive
+            public bool enablePhysics2DStripping = false; // Remove Physics 2D module during build
         }
 
         [Serializable]
