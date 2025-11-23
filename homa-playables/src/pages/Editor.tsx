@@ -269,6 +269,47 @@ export const Editor: React.FC = () => {
         }
     };
 
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [editedName, setEditedName] = useState('');
+
+    const handleNameClick = () => {
+        if (currentConcept) {
+            setEditedName(currentConcept.name);
+            setIsEditingName(true);
+        }
+    };
+
+    const handleNameSave = async () => {
+        if (!project || !currentConcept || !editedName.trim() || editedName === currentConcept.name) {
+            setIsEditingName(false);
+            return;
+        }
+
+        const newName = editedName.trim();
+        const updatedConcept = { ...currentConcept, name: newName, updatedAt: Date.now() };
+        const updatedConcepts = (project.concepts || []).map(c =>
+            c.id === currentConcept.id ? updatedConcept : c
+        );
+
+        try {
+            await updateProject(project.id, { concepts: updatedConcepts });
+            setCurrentConcept(updatedConcept);
+            setProject(prev => prev ? { ...prev, concepts: updatedConcepts } : null);
+            setIsEditingName(false);
+        } catch (err) {
+            console.error('Failed to rename concept:', err);
+            alert('Failed to rename concept');
+        }
+    };
+
+    const handleNameKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleNameSave();
+        } else if (e.key === 'Escape') {
+            setIsEditingName(false);
+        }
+    };
+
     if (loading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -299,22 +340,65 @@ export const Editor: React.FC = () => {
                                     border: 'none',
                                     color: 'var(--color-text-secondary)',
                                     cursor: 'pointer',
-                                    fontSize: '14px'
+                                    fontSize: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
                                 }}
                             >
-                                ← Back to Hub
+                                <span>←</span> Back
                             </button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: 'var(--color-text-secondary)' }}>{project.name}</span>
-                                <span style={{ color: 'var(--color-text-secondary)' }}>/</span>
-                                <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{currentConcept.name}</h2>
+                            <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--color-border)' }} />
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                {isEditingName ? (
+                                    <input
+                                        autoFocus
+                                        value={editedName}
+                                        onChange={(e) => setEditedName(e.target.value)}
+                                        onBlur={handleNameSave}
+                                        onKeyDown={handleNameKeyDown}
+                                        style={{
+                                            fontSize: '20px',
+                                            fontWeight: 'bold',
+                                            background: 'var(--color-bg-tertiary)',
+                                            border: '1px solid var(--color-accent)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            color: 'var(--color-text-primary)',
+                                            padding: '4px 8px',
+                                            outline: 'none',
+                                            minWidth: '200px'
+                                        }}
+                                    />
+                                ) : (
+                                    <div
+                                        onClick={handleNameClick}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            cursor: 'pointer',
+                                            padding: '4px 8px',
+                                            borderRadius: 'var(--radius-sm)',
+                                            transition: 'background-color 0.2s'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                        title="Click to rename"
+                                    >
+                                        <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{currentConcept.name}</h2>
+                                        <span style={{ fontSize: '14px', opacity: 0.5 }}>✎</span>
+                                    </div>
+                                )}
+
                                 {hasUnsavedChanges && (
                                     <span style={{
                                         fontSize: '12px',
                                         color: 'var(--color-accent)',
                                         backgroundColor: 'rgba(255, 145, 250, 0.1)',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px'
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        border: '1px solid rgba(255, 145, 250, 0.2)'
                                     }}>
                                         Unsaved Changes
                                     </span>
