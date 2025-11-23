@@ -174,28 +174,24 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
         backgroundColor: '#1c1c1e',
         borderRadius: '44px',
         padding: '8px',
-        boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.1)',
+        boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)',
         position: 'relative',
-        boxSizing: 'content-box'
+        boxSizing: 'border-box'
     };
 
     const screenStyle: React.CSSProperties = {
         width: '100%',
         height: '100%',
-        backgroundColor: '#fff',
-        borderRadius: '32px',
+        backgroundColor: '#000',
+        borderRadius: '36px',
         overflow: 'hidden',
         position: 'relative'
     };
 
     const iframeContainerStyle: React.CSSProperties = {
-        width: currentResolution.width,
-        height: currentResolution.height,
-        transform: `scale(${contentScale})`,
-        transformOrigin: 'top left',
-        position: 'absolute',
-        top: 0,
-        left: 0
+        width: '100%',
+        height: '100%',
+        position: 'relative'
     };
 
     return (
