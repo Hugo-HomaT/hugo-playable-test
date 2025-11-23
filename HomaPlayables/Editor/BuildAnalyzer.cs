@@ -90,8 +90,8 @@ namespace HomaPlayables.Editor
             
             Debug.Log($"[Homa] 📊 Build Analysis saved to: {reportPath}");
             
-            // Open the report automatically
-            EditorUtility.OpenWithDefaultApp(reportPath);
+            // Open the report automatically - DISABLED
+            // EditorUtility.OpenWithDefaultApp(reportPath);
         }
 
         private static void ParseEditorLog(StringBuilder sb, AnalysisResult result)

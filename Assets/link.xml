@@ -1,0 +1,29 @@
+<linker>
+  <!-- Preserve only what's absolutely necessary -->
+  
+  <!-- Keep core Unity assemblies but strip unused parts -->
+  <assembly fullname="UnityEngine.CoreModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.UI" preserve="nothing"/>
+  
+  <!-- Aggressively strip unused Unity modules -->
+  <assembly fullname="UnityEngine.AIModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.AnimationModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.AudioModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.ClothModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.DirectorModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.GridModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.IMGUIModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.InputLegacyModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.ParticleSystemModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.Physics2DModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.PhysicsModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.TerrainModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.TerrainPhysicsModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.TilemapModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.UIModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.VehiclesModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.VideoModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.VRModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.WindModule" preserve="nothing"/>
+  <assembly fullname="UnityEngine.XRModule" preserve="nothing"/>
+</linker>

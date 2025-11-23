@@ -87,8 +87,12 @@ namespace HomaPlayables.Editor
                         textureOptimizer.OptimizeTextures(config.optimization.maxTextureSize, config.optimization.textureOverrides);
                     }
 
-                    // 0.8. Optimize Fonts (DISABLED - needs proper atlas regeneration)
+                    // 0.9. Optimize Fonts (DISABLED - needs proper atlas regeneration)
                     // fontOptimizer.OptimizeFonts();
+
+                    // 0.10. Auto-Generate link.xml (Module Analysis)
+                    Debug.Log("[Homa] Analyzing used modules and generating link.xml...");
+                    ModuleAnalyzer.AnalyzeAndGenerateLinkXml();
 
                     // 1. Apply Optimization Settings
                     ApplyOptimizationSettings(config.optimization);
@@ -198,7 +202,6 @@ namespace HomaPlayables.Editor
                     // Restore everything
                     fileHider.RestoreAll();
                     textureOptimizer.RestoreTextures();
-                    // fontOptimizer.RestoreFonts();
                     
                     if (config.optimization.enablePhysics2DStripping)
                     {
@@ -300,38 +303,59 @@ namespace HomaPlayables.Editor
 
         private static void ApplyOptimizationSettings(HomaBuildConfig.OptimizationConfig optimization)
         {
-            Debug.Log("[Homa] Applying optimization settings...");
+            Debug.Log("[Homa] Applying ULTRA-AGGRESSIVE optimization settings...");
 
-            // === Code Stripping ===
-            PlayerSettings.stripEngineCode = optimization.enableCodeStripping;
-            PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, optimization.enableCodeStripping ? ManagedStrippingLevel.High : ManagedStrippingLevel.Low);
+            // === Code Stripping (ULTRA AGGRESSIVE) ===
+            PlayerSettings.stripEngineCode = true; // Always strip
+            PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, ManagedStrippingLevel.High);
+            
+            // === IL2CPP Stripping (if using IL2CPP) ===
+            PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, Il2CppCompilerConfiguration.Master);
             
             // === API Compatibility ===
             PlayerSettings.SetApiCompatibilityLevel(BuildTargetGroup.WebGL, ApiCompatibilityLevel.NET_Standard);
 
+            // === IL2CPP Settings (CRITICAL FOR SIZE) ===
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
+            PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, Il2CppCompilerConfiguration.Master);
+
             // === WebGL Specific Settings ===
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-            PlayerSettings.WebGL.dataCaching = true;
-            PlayerSettings.WebGL.memorySize = 256; // Minimal memory allocation
-            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
+            PlayerSettings.WebGL.dataCaching = false; // Disable for smaller builds
+            PlayerSettings.WebGL.memorySize = 128; // Ultra minimal memory (was 256)
+            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None; // No exception handling = smaller code
+            PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm; // Use WASM (smaller than asm.js)
             
             // === Code Optimization ===
             PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
             
-            // === Splash Screen (requires Unity Pro/Plus) ===
+            // === Disable Unused Features ===
+            PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+            PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+            PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.None);
+            
+            // === Splash Screen ===
             PlayerSettings.SplashScreen.show = false;
             PlayerSettings.SplashScreen.showUnityLogo = false;
 
-            // === Graphics Settings ===
+            // === Graphics Settings (Minimal) ===
             PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new UnityEngine.Rendering.GraphicsDeviceType[] { 
-                UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3,
-                UnityEngine.Rendering.GraphicsDeviceType.OpenGLES2
+                UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3
             });
+            
+            // === Disable Auto Graphics API ===
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+            
+            // === Accelerometer & Gyroscope (disable if not needed) ===
+            PlayerSettings.accelerometerFrequency = 0;
 
-            Debug.Log($"[Homa] ✓ Code Stripping: {(optimization.enableCodeStripping ? "High" : "Low")}");
+            Debug.Log("[Homa] ✓ Code Stripping: ULTRA HIGH");
+            Debug.Log("[Homa] ✓ Managed Stripping: High");
+            Debug.Log("[Homa] ✓ IL2CPP: Master Configuration");
             Debug.Log("[Homa] ✓ Compression: Gzip");
-            Debug.Log("[Homa] ✓ API: .NET Standard 2.1");
-            Debug.Log("[Homa] ✓ Memory: 256MB");
+            Debug.Log("[Homa] ✓ Memory: 128MB (minimal)");
+            Debug.Log("[Homa] ✓ Exception Support: None");
+            Debug.Log("[Homa] ✓ Stack Traces: Disabled");
             Debug.Log("[Homa] ✓ Splash Screen: Disabled");
         }
 

@@ -147,6 +147,43 @@ namespace HomaPlayables.Editor
             }
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Manifest Management", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Manually strip unused Unity modules from Packages/manifest.json.\n" +
+                "Removes: AssetBundle, Screenshots, Tilemaps, UI Toolkit, Analytics, Video (6 modules).\n" +
+                "This can reduce build size by 1-2 MB.", 
+                MessageType.Info);
+            
+            EditorGUILayout.BeginHorizontal();
+            
+            if (GUILayout.Button("Strip Unused Modules", GUILayout.Height(30)))
+            {
+                if (EditorUtility.DisplayDialog(
+                    "Strip Modules", 
+                    "This will remove 6 unused modules from manifest.json:\n\n" +
+                    "• AssetBundle\n• Screenshots\n• Tilemaps\n• UI Toolkit\n• Analytics\n• Video\n\n" +
+                    "Note: Timeline (director) kept - Cinemachine depends on it.\n\n" +
+                    "A backup will be created. Continue?", 
+                    "Strip", "Cancel"))
+                {
+                    ModuleStripper.StripModules();
+                }
+            }
+            
+            if (GUILayout.Button("Restore Modules", GUILayout.Height(30)))
+            {
+                if (EditorUtility.DisplayDialog(
+                    "Restore Modules", 
+                    "Restore the original manifest.json from backup?", 
+                    "Restore", "Cancel"))
+                {
+                    ModuleStripper.RestoreModules();
+                }
+            }
+            
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("Advanced Compression", EditorStyles.boldLabel);
             _config.optimization.enableAssetOptimization = EditorGUILayout.Toggle("Optimize PNG Assets", _config.optimization.enableAssetOptimization);
             EditorGUILayout.HelpBox("Uses pngquant to compress PNG files in the build output. Requires external tools installed.", MessageType.Info);

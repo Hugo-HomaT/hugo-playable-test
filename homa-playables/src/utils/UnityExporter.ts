@@ -1,39 +1,28 @@
 import JSZip from 'jszip';
 import { getMRAIDWrapper } from './MRAIDWrapper';
 
-/**
- * Export Unity WebGL build as a single self-contained HTML file
- * Handles decompression of .gz files, base64 encoding, and loader patching
- */
-
 async function blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]); // Return only base64 part
+        };
         reader.onerror = reject;
         reader.readAsDataURL(blob);
     });
 }
 
-/**
- * Find Unity build file by extension pattern
- */
 async function findBuildFile(zip: JSZip, pattern: string): Promise<JSZip.JSZipObject | null> {
     let found: JSZip.JSZipObject | null = null;
-
     zip.forEach((relativePath, file) => {
         if (relativePath.includes('Build/') && relativePath.endsWith(pattern)) {
             found = file;
         }
     });
-
     return found;
 }
 
-/**
- * Export Unity WebGL build as a single self-contained HTML file
- * Handles decompression of .gz files, base64 encoding, and loader patching
- */
 export async function exportUnityToSingleHTML(
     zip: JSZip,
     varsJson: string,
@@ -41,21 +30,23 @@ export async function exportUnityToSingleHTML(
 ): Promise<string> {
     console.log('[UnityExporter] Starting Unity WebGL export...');
 
-    // 1. Find Unity build files
     const loaderFile = await findBuildFile(zip, '.loader.js');
     const frameworkFile = await findBuildFile(zip, '.framework.js.gz');
     const wasmFile = await findBuildFile(zip, '.wasm.gz');
     const dataFile = await findBuildFile(zip, '.data.gz');
 
     if (!loaderFile || !frameworkFile || !wasmFile || !dataFile) {
-        throw new Error('Missing Unity build files. Expected: loader.js, framework.js.gz, wasm.gz, data.gz');
+        throw new Error('Missing Unity build files');
     }
 
-    console.log('[UnityExporter] Found Unity build files');
+    // Load loader.js
+    let loaderJs = await loaderFile.async('string');
+    // Trim whitespace but preserve the code structure
+    loaderJs = loaderJs.trim();
 
-    // 2. Load files (Keep compressed to save space!)
-    const loaderJs = await loaderFile.async('string');
-    // Read as blobs directly (no decompression)
+    // Prevent premature script tag closing if it exists in the code (rare but possible)
+    loaderJs = loaderJs.replace(/<\/script>/g, '<\\/script>');
+
     const frameworkBlob = await frameworkFile.async('blob');
     const wasmBlob = await wasmFile.async('blob');
     const dataBlob = await dataFile.async('blob');
@@ -66,112 +57,19 @@ export async function exportUnityToSingleHTML(
         data: `${(dataBlob.size / 1024 / 1024).toFixed(2)} MB`
     });
 
-    // 3. Convert COMPRESSED content to base64
-    const frameworkBase64Full = await blobToBase64(frameworkBlob);
-    const wasmBase64Full = await blobToBase64(wasmBlob);
-    const dataBase64Full = await blobToBase64(dataBlob);
+    const [f, w, d] = await Promise.all([
+        blobToBase64(frameworkBlob),
+        blobToBase64(wasmBlob),
+        blobToBase64(dataBlob)
+    ]);
 
-    // Extract just the base64 part
-    const frameworkBase64 = frameworkBase64Full.split(',')[1];
-    const wasmBase64 = wasmBase64Full.split(',')[1];
-    const dataBase64 = dataBase64Full.split(',')[1];
-
-    console.log('[UnityExporter] Base64 compressed sizes:', {
-        framework: `${(frameworkBase64.length / 1024 / 1024).toFixed(2)} MB`,
-        wasm: `${(wasmBase64.length / 1024 / 1024).toFixed(2)} MB`,
-        data: `${(dataBase64.length / 1024 / 1024).toFixed(2)} MB`
-    });
-
-    // 5. Build the final HTML
     const mraidScript = getMRAIDWrapper(varsJson);
 
-    const html = `<!DOCTYPE html>
-<html lang="en-us">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>${projectName}</title>
-    ${mraidScript}
-    <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-        #unity-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-        #unity-canvas { width: 100% !important; height: 100% !important; display: block; }
-    </style>
-</head>
-<body>
-    <div id="unity-container">
-        <canvas id="unity-canvas"></canvas>
-    </div>
-    
-    <script>
-        // 1. Inline Unity Loader
-        ${loaderJs}
+    // Minified HTML with loader.js in separate script tag to avoid conflicts
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>${projectName}</title>${mraidScript}<style>*{margin:0;padding:0}html,body,#c{width:100%;height:100%;overflow:hidden;background:#000;display:block}</style></head><body><canvas id="c"></canvas><script>${loaderJs}</script><script>async function d(b,t){const s=atob(b),a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);const r=await new Response(new Blob([a]).stream().pipeThrough(new DecompressionStream('gzip'))).blob();return URL.createObjectURL(new Blob([r],{type:t}));}(async()=>{try{const[u,v,w]=await Promise.all([d('${f}','application/javascript'),d('${w}','application/wasm'),d('${d}','application/octet-stream')]);createUnityInstance(document.getElementById('c'),{dataUrl:w,frameworkUrl:u,codeUrl:v,streamingAssetsUrl:"StreamingAssets",companyName:"Homa",productName:"${projectName}",productVersion:"1.0"},()=>{}).then(i=>{window.unityInstance=i;}).catch(e=>{alert(e);})}catch(e){alert(e.message);}})();</script></body></html>`;
 
-        // 2. Client-side Decompression Helper
-        async function decompressAsset(base64Data, mimeType) {
-            try {
-                // Decode base64 to binary string
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                
-                // Decompress using browser native API
-                const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-                const decompressedBlob = await new Response(stream).blob();
-                
-                // Create Blob URL with correct MIME type
-                return URL.createObjectURL(decompressedBlob.slice(0, decompressedBlob.size, mimeType));
-            } catch (e) {
-                console.error("Decompression failed:", e);
-                throw e;
-            }
-        }
-
-        // 3. Initialize Unity with Decompressed Assets
-        (async function() {
-            try {
-                console.log("Starting asset decompression...");
-                
-                const [frameworkUrl, codeUrl, dataUrl] = await Promise.all([
-                    decompressAsset("${frameworkBase64}", "application/javascript"),
-                    decompressAsset("${wasmBase64}", "application/wasm"),
-                    decompressAsset("${dataBase64}", "application/octet-stream")
-                ]);
-                
-                console.log("Assets decompressed. Initializing Unity...");
-
-                var canvas = document.querySelector("#unity-canvas");
-                var config = {
-                    dataUrl: dataUrl,
-                    frameworkUrl: frameworkUrl,
-                    codeUrl: codeUrl,
-                    streamingAssetsUrl: "StreamingAssets",
-                    companyName: "Homa",
-                    productName: "${projectName}",
-                    productVersion: "1.0",
-                };
-                
-                createUnityInstance(canvas, config, function(progress) {
-                    // console.log('Loading:', progress);
-                }).then(function(unityInstance) {
-                    window.unityInstance = unityInstance;
-                }).catch(function(message) {
-                    alert('Unity Error: ' + message);
-                });
-                
-            } catch (e) {
-                alert("Failed to load playable: " + e.message);
-            }
-        })();
-    </script>
-</body>
-</html>`;
-
-    console.log('[UnityExporter] Export complete. HTML size:', (html.length / 1024 / 1024).toFixed(2), 'MB');
+    const finalSize = html.length / 1024 / 1024;
+    console.log('[UnityExporter] Export complete. HTML size:', finalSize.toFixed(2), 'MB');
 
     return html;
 }
-
-
