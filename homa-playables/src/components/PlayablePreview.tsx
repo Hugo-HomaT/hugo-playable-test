@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 
 // --- Types & Constants ---
 
@@ -12,17 +12,30 @@ interface DevicePreset {
     name: string;
     width: number;
     height: number;
-    safeArea?: { top: number; bottom: number; left: number; right: number };
+    isCustom?: boolean;
 }
 
-const PRESETS: DevicePreset[] = [
-    { id: 'iphone-14-pro', name: 'iPhone 14 Pro', width: 393, height: 852, safeArea: { top: 59, bottom: 34, left: 0, right: 0 } },
-    { id: 'iphone-se-3', name: 'iPhone SE (3rd Gen)', width: 375, height: 667, safeArea: { top: 20, bottom: 0, left: 0, right: 0 } },
-    { id: 'ipad-pro-11', name: 'iPad Pro 11"', width: 834, height: 1194, safeArea: { top: 24, bottom: 20, left: 0, right: 0 } },
-    { id: 'generic-android', name: 'Generic Android', width: 360, height: 800, safeArea: { top: 24, bottom: 0, left: 0, right: 0 } },
+const DEFAULT_PRESETS: DevicePreset[] = [
+    { id: 'iphone-14-pro', name: 'iPhone 14 Pro', width: 1179, height: 2556 },
 ];
 
-const CUSTOM_PRESET_ID = 'custom';
+const STORAGE_KEY = 'homa_playable_preview_presets';
+
+// Helper function to load presets from localStorage
+const loadPresetsFromStorage = (): DevicePreset[] => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Merge saved custom presets with defaults to ensure defaults are always fresh
+            const customPresets = parsed.filter((p: DevicePreset) => p.isCustom);
+            return [...DEFAULT_PRESETS, ...customPresets];
+        }
+    } catch (e) {
+        console.error("Failed to load presets", e);
+    }
+    return DEFAULT_PRESETS;
+};
 
 // --- Components ---
 
@@ -31,44 +44,35 @@ interface PlayablePreviewProps {
 }
 
 export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
-    // State
-    const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
-    const [customResolution, setCustomResolution] = useState<Resolution>({ width: 360, height: 800 });
+    // State - Initialize presets from localStorage
+    const [presets, setPresets] = useState<DevicePreset[]>(() => loadPresetsFromStorage());
+    const [selectedPresetId, setSelectedPresetId] = useState<string>(() => {
+        const loaded = loadPresetsFromStorage();
+        return loaded[0]?.id || DEFAULT_PRESETS[0].id;
+    });
     const [isLandscape, setIsLandscape] = useState(false);
-    const [showSafeArea, setShowSafeArea] = useState(false);
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newPresetName, setNewPresetName] = useState('');
+    const [newPresetWidth, setNewPresetWidth] = useState('393');
+    const [newPresetHeight, setNewPresetHeight] = useState('852');
 
     const containerRef = useRef<HTMLDivElement>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    // Save presets to local storage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    }, [presets]);
+
     // Derived State
     const currentResolution = useMemo((): Resolution => {
-        if (selectedPresetId === CUSTOM_PRESET_ID) {
-            return isLandscape
-                ? { width: customResolution.height, height: customResolution.width }
-                : customResolution;
-        }
-        const preset = PRESETS.find(p => p.id === selectedPresetId) || PRESETS[0];
+        const preset = presets.find(p => p.id === selectedPresetId) || presets[0];
         return isLandscape
             ? { width: preset.height, height: preset.width }
             : { width: preset.width, height: preset.height };
-    }, [selectedPresetId, customResolution, isLandscape]);
-
-    const currentSafeArea = useMemo(() => {
-        if (selectedPresetId === CUSTOM_PRESET_ID) return null;
-        const preset = PRESETS.find(p => p.id === selectedPresetId);
-        if (!preset?.safeArea) return null;
-
-        // Rotate safe area if landscape
-        if (isLandscape) {
-            return {
-                top: preset.safeArea.left,
-                bottom: preset.safeArea.right,
-                left: preset.safeArea.top,
-                right: preset.safeArea.bottom
-            };
-        }
-        return preset.safeArea;
-    }, [selectedPresetId, isLandscape]);
+    }, [selectedPresetId, isLandscape, presets]);
 
     // Scaling Logic
     // We want the VISUAL size to be determined ONLY by the aspect ratio and the available space.
@@ -85,9 +89,6 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
 
         if (ratio > 1) {
             // Landscape-ish
-            // Fit to width first? No, usually height is the constraint on desktop.
-            // Let's try to fit within the box.
-
             // Try fitting to max width
             dWidth = Math.min(MAX_DISPLAY_WIDTH * 1.5, 450); // Allow wider for landscape
             dHeight = dWidth / ratio;
@@ -118,23 +119,46 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
     // Handlers
     const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newId = e.target.value;
-        setSelectedPresetId(newId);
-        if (newId === CUSTOM_PRESET_ID) {
-            // Initialize custom with current preset values if switching to custom
-            const currentPreset = PRESETS.find(p => p.id === selectedPresetId) || PRESETS[0];
-            // Reset orientation to portrait for simplicity when switching to custom, or keep?
-            // Let's reset custom res to portrait version of current
-            setCustomResolution({
-                width: isLandscape ? currentPreset.height : currentPreset.width,
-                height: isLandscape ? currentPreset.width : currentPreset.height
-            });
-            setIsLandscape(false); // Reset to portrait base
+        if (newId === 'create_new') {
+            setIsModalOpen(true);
+        } else {
+            setSelectedPresetId(newId);
         }
     };
 
-    const handleCustomDimChange = (dim: 'width' | 'height', value: string) => {
-        const numVal = parseInt(value) || 0;
-        setCustomResolution(prev => ({ ...prev, [dim]: numVal }));
+    const handleCreatePreset = () => {
+        if (!newPresetName || !newPresetWidth || !newPresetHeight) return;
+
+        const width = parseInt(newPresetWidth);
+        const height = parseInt(newPresetHeight);
+
+        if (isNaN(width) || isNaN(height)) return;
+
+        const newPreset: DevicePreset = {
+            id: `custom-${Date.now()}`,
+            name: newPresetName,
+            width,
+            height,
+            isCustom: true
+        };
+
+        setPresets(prev => [...prev, newPreset]);
+        setSelectedPresetId(newPreset.id);
+        setIsModalOpen(false);
+
+        // Reset form
+        setNewPresetName('');
+        setNewPresetWidth('393');
+        setNewPresetHeight('852');
+    };
+
+    const handleDeletePreset = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent selection change if inside a complex component
+        const newPresets = presets.filter(p => p.id !== id);
+        setPresets(newPresets);
+        if (selectedPresetId === id) {
+            setSelectedPresetId(DEFAULT_PRESETS[0].id);
+        }
     };
 
     const toggleFullscreen = () => {
@@ -191,49 +215,61 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                     {/* Device Selector */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '11px', color: '#888', fontWeight: 600, textTransform: 'uppercase' }}>Device</label>
-                        <select
-                            value={selectedPresetId}
-                            onChange={handlePresetChange}
-                            style={{
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                backgroundColor: '#2a2a2a',
-                                color: '#fff',
-                                border: '1px solid #444',
-                                outline: 'none',
-                                fontSize: '14px',
-                                minWidth: '160px'
-                            }}
-                        >
-                            {PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            <option value={CUSTOM_PRESET_ID}>Custom Resolution</option>
-                        </select>
-                    </div>
+                        <label style={{ fontSize: '11px', color: '#888', fontWeight: 600, textTransform: 'uppercase' }}>Device Preset</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <select
+                                value={selectedPresetId}
+                                onChange={handlePresetChange}
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    backgroundColor: '#2a2a2a',
+                                    color: '#fff',
+                                    border: '1px solid #444',
+                                    outline: 'none',
+                                    fontSize: '14px',
+                                    minWidth: '200px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <optgroup label="Defaults">
+                                    {presets.filter(p => !p.isCustom).map(p => (
+                                        <option key={p.id} value={p.id}>{p.name} ({p.width}x{p.height})</option>
+                                    ))}
+                                </optgroup>
+                                {presets.some(p => p.isCustom) && (
+                                    <optgroup label="My Presets">
+                                        {presets.filter(p => p.isCustom).map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} ({p.width}x{p.height})</option>
+                                        ))}
+                                    </optgroup>
+                                )}
+                                <option value="create_new" style={{ fontWeight: 'bold', color: '#4ade80' }}>+ Create New Preset...</option>
+                            </select>
 
-                    {/* Custom Inputs */}
-                    {selectedPresetId === CUSTOM_PRESET_ID && (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <label style={{ fontSize: '11px', color: '#888', fontWeight: 600, textTransform: 'uppercase' }}>Width</label>
-                                <input
-                                    type="number"
-                                    value={customResolution.width}
-                                    onChange={e => handleCustomDimChange('width', e.target.value)}
-                                    style={{ width: '70px', padding: '8px', borderRadius: '8px', background: '#2a2a2a', color: '#fff', border: '1px solid #444' }}
-                                />
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <label style={{ fontSize: '11px', color: '#888', fontWeight: 600, textTransform: 'uppercase' }}>Height</label>
-                                <input
-                                    type="number"
-                                    value={customResolution.height}
-                                    onChange={e => handleCustomDimChange('height', e.target.value)}
-                                    style={{ width: '70px', padding: '8px', borderRadius: '8px', background: '#2a2a2a', color: '#fff', border: '1px solid #444' }}
-                                />
-                            </div>
+                            {/* Delete Button for Custom Presets */}
+                            {presets.find(p => p.id === selectedPresetId)?.isCustom && (
+                                <button
+                                    onClick={(e) => handleDeletePreset(selectedPresetId, e)}
+                                    style={{
+                                        background: 'rgba(239, 68, 68, 0.2)',
+                                        color: '#ef4444',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}
+                                    title="Delete Preset"
+                                >
+                                    🗑️
+                                </button>
+                            )}
                         </div>
-                    )}
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -275,23 +311,6 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
 
                     <div style={{ width: '1px', height: '24px', background: '#444', margin: '0 8px' }} />
 
-                    {/* Tools */}
-                    <button
-                        onClick={() => setShowSafeArea(!showSafeArea)}
-                        style={{
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            border: showSafeArea ? '1px solid #ef4444' : '1px solid #444',
-                            background: showSafeArea ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                            color: showSafeArea ? '#ef4444' : '#aaa',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        Safe Area
-                    </button>
-
                     <button
                         onClick={toggleFullscreen}
                         style={{
@@ -303,6 +322,7 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
                             cursor: 'pointer',
                             fontSize: '13px'
                         }}
+                        title="Fullscreen"
                     >
                         ⛶
                     </button>
@@ -338,20 +358,6 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
                                 style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                                 title="Preview"
                             />
-
-                            {/* Safe Area Overlay */}
-                            {showSafeArea && currentSafeArea && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: 0, left: 0, right: 0, bottom: 0,
-                                    borderTop: `${currentSafeArea.top}px solid rgba(255, 50, 50, 0.25)`,
-                                    borderBottom: `${currentSafeArea.bottom}px solid rgba(255, 50, 50, 0.25)`,
-                                    borderLeft: `${currentSafeArea.left}px solid rgba(255, 50, 50, 0.25)`,
-                                    borderRight: `${currentSafeArea.right}px solid rgba(255, 50, 50, 0.25)`,
-                                    pointerEvents: 'none',
-                                    zIndex: 10
-                                }} />
-                            )}
                         </div>
                     </div>
                 </div>
@@ -371,6 +377,79 @@ export const PlayablePreview: React.FC<PlayablePreviewProps> = ({ src }) => {
                     {Math.round(contentScale * 100)}%
                 </div>
             </div>
+
+            {/* Create Preset Modal */}
+            {isModalOpen && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1000,
+                    backdropFilter: 'blur(5px)'
+                }}>
+                    <div style={{
+                        backgroundColor: '#1e1e1e',
+                        padding: '24px',
+                        borderRadius: '16px',
+                        width: '320px',
+                        border: '1px solid #333',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+                    }}>
+                        <h3 style={{ margin: '0 0 16px 0', color: '#fff', fontSize: '18px' }}>Create New Preset</h3>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <label style={{ color: '#888', fontSize: '12px' }}>Preset Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. My iPhone"
+                                    value={newPresetName}
+                                    onChange={e => setNewPresetName(e.target.value)}
+                                    style={{ padding: '10px', borderRadius: '8px', background: '#2a2a2a', border: '1px solid #444', color: '#fff', outline: 'none' }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                    <label style={{ color: '#888', fontSize: '12px' }}>Width</label>
+                                    <input
+                                        type="number"
+                                        value={newPresetWidth}
+                                        onChange={e => setNewPresetWidth(e.target.value)}
+                                        style={{ padding: '10px', borderRadius: '8px', background: '#2a2a2a', border: '1px solid #444', color: '#fff', outline: 'none', width: '100%' }}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                    <label style={{ color: '#888', fontSize: '12px' }}>Height</label>
+                                    <input
+                                        type="number"
+                                        value={newPresetHeight}
+                                        onChange={e => setNewPresetHeight(e.target.value)}
+                                        style={{ padding: '10px', borderRadius: '8px', background: '#2a2a2a', border: '1px solid #444', color: '#fff', outline: 'none', width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                            <button
+                                onClick={() => setIsModalOpen(false)}
+                                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #444', background: 'transparent', color: '#aaa', cursor: 'pointer' }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreatePreset}
+                                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#4ade80', color: '#000', fontWeight: 'bold', cursor: 'pointer' }}
+                            >
+                                Create
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
